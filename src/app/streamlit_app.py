@@ -1,21 +1,19 @@
-"""
-Minimal Streamlit app to experiment with attacks/defenses.
-"""
-# --- IMPORTS (đừng sửa khác đi) ---
+
+# --- IMPORTS ---
 import streamlit as st
 import pandas as pd
 import networkx as nx
 import json
 import pydeck as pdk
 from pathlib import Path
-
-# Bảo đảm Python nhìn thấy thư mục gốc dự án (…/airline-robustness-starter)
 import sys
-ROOT = Path(__file__).resolve().parents[2]  # lên 2 cấp từ src/app/
+
+# Ensure Python can find the project root directory (airline-robustness-starter)
+ROOT = Path(__file__).resolve().parents[2]  # Move up 2 levels from src/app/
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Dùng import tuyệt đối (không còn dấu ..)
+# Absolute imports (avoiding relative imports like '..')
 from src.data_io import load_airports, load_routes, merge_airports_routes
 from src.graph_build import build_digraph
 from src.centrality import node_centralities
@@ -25,12 +23,11 @@ from src.attacks import (
     edge_betweenness_attack,
     geographic_attack_radius,
     community_bridge_attack,
+    random_node_failures # Explicitly import this
 )
 from src.defenses import greedy_edge_addition
-# --- STREAMLIT APP ---
 
-
-
+# --- STREAMLIT APP CONFIGURATION ---
 st.set_page_config(page_title="Airline Network Robustness", layout="wide")
 
 st.title("✈️ Airline Network Robustness — Interactive Demo")
@@ -43,23 +40,38 @@ with st.sidebar:
 
     if st.button("Load graph"):
         try:
+            # Load and process data
             airports = load_airports(airports_path)
             routes = load_routes(routes_path)
             airports, routes = merge_airports_routes(airports, routes)
+
+            # Build the graph with distance weights
             G = build_digraph(airports, routes, add_distance=True)
+
+            # Store the graph in the session state for persistence across reruns
             st.session_state["G"] = G
             st.success(f"Loaded graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges.")
         except Exception as e:
             st.error(f"Error loading data: {e}")
 
+# Retrieve the graph from session state
 G = st.session_state.get("G")
 
 if G is None:
     st.info("Please load the graph from the sidebar to start.")
     st.stop()
 
-def render_map(G):
-    # Extract node data
+def render_map(G: nx.DiGraph):
+    """
+    Renders an interactive 3D map of the airline network using PyDeck.
+
+    Nodes are displayed as scatter points, and edges are displayed as arcs.
+    For performance, the number of displayed edges is capped.
+
+    Args:
+        G: The input directed graph.
+    """
+    # Extract node data for plotting
     nodes = []
     for n, data in G.nodes(data=True):
         if "lat" in data and "lon" in data:
@@ -73,8 +85,8 @@ def render_map(G):
 
     # Extract edge data (arcs)
     arcs = []
-    # Limit edges for performance if needed, but let's try full set first or a sample
-    # For visual clarity, maybe just sample 2000 edges if it's too heavy
+    # Limit edges for performance if needed.
+    # Rendering too many arcs can slow down the browser significantly.
     edges_to_plot = list(G.edges())
     if len(edges_to_plot) > 5000:
         import random
@@ -84,6 +96,7 @@ def render_map(G):
         if u in G.nodes and v in G.nodes:
             u_data = G.nodes[u]
             v_data = G.nodes[v]
+            # Ensure both endpoints have valid coordinates
             if "lat" in u_data and "lon" in u_data and "lat" in v_data and "lon" in v_data:
                 arcs.append({
                     "source": [u_data["lon"], u_data["lat"]],
@@ -93,7 +106,7 @@ def render_map(G):
                 })
     df_arcs = pd.DataFrame(arcs)
 
-    # Layers
+    # Define map layers
     layer_nodes = pdk.Layer(
         "ScatterplotLayer",
         df_nodes,
@@ -116,8 +129,10 @@ def render_map(G):
         width_min_pixels=1,
     )
 
+    # Set initial view state
     view_state = pdk.ViewState(latitude=20.0, longitude=0.0, zoom=1.5, pitch=0)
 
+    # Render the deck
     r = pdk.Deck(
         layers=[layer_arcs, layer_nodes],
         initial_view_state=view_state,
@@ -218,7 +233,6 @@ with tab2:
                 st.session_state["attack_log"] = log
             elif attack_type == "random_nodes":
                 # Random returns a list of reports, not a single graph H
-                from src.attacks import random_node_failures
                 log = random_node_failures(G, k=int(k), R=int(R))
                 st.session_state["H"] = None # No single resulting graph
                 st.session_state["attack_log"] = log

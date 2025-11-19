@@ -1,5 +1,8 @@
 """
-Defense strategies: edge addition heuristics, node hardening.
+Defense strategies for enhancing network robustness.
+
+This module implements strategies to improve network resilience, such as adding
+strategic edges (redundancy) to connect communities or hardening critical nodes.
 """
 from __future__ import annotations
 from typing import List, Tuple, Dict, Iterable, Optional
@@ -9,64 +12,158 @@ import pandas as pd
 from .metrics import topological_report
 from .geo import haversine_km
 
-def _candidate_pairs(G: nx.DiGraph, max_distance_km: float=3000, across_communities: bool=True, top_n_per_comm: int=10) -> List[Tuple[str,str]]:
-    # Small candidate set: pick top-degree nodes; if across_communities, ensure endpoints are in different communities
+def _candidate_pairs(
+    G: nx.DiGraph,
+    max_distance_km: float = 3000,
+    across_communities: bool = True,
+    top_n_per_comm: int = 10
+) -> List[Tuple[str, str]]:
+    """
+    Generates a list of candidate node pairs for edge addition.
+
+    To avoid checking all O(N^2) pairs, this heuristic focuses on connecting
+    high-degree nodes from different communities, which is often effective for
+    improving global connectivity.
+
+    Args:
+        G: The input directed graph.
+        max_distance_km: The maximum geographic distance allowed between nodes.
+        across_communities: If True, only considers pairs where nodes are in different communities.
+        top_n_per_comm: The number of top-degree nodes to consider from each community.
+
+    Returns:
+        A list of tuples representing candidate node pairs (u, v).
+    """
+    # Use the undirected view for community detection as it captures structural clusters better.
     U = G.to_undirected()
     from networkx.algorithms.community import label_propagation_communities
     comms = list(label_propagation_communities(U))
+
+    # Map each node to its community ID for quick lookup
     comm_id = {}
     for cid, c in enumerate(comms):
         for n in c:
             comm_id[n] = cid
-    # top-N per community by degree
+
+    # Select top-N nodes by degree from each community to form a candidate pool.
+    # High-degree nodes are good candidates for "hubs" to connect communities.
     candidates = []
     for cid, c in enumerate(comms):
         nodes = sorted(list(c), key=lambda n: U.degree(n), reverse=True)[:top_n_per_comm]
         candidates.extend(nodes)
+
     cand_set = set(candidates)
-    # Form pairs not already connected
+
+    # Form pairs from the candidate pool that are not already connected.
     pairs = []
     for u, v in itertools.combinations(cand_set, 2):
         if U.has_edge(u, v):
             continue
+
+        # Filter for cross-community edges if requested
         if across_communities and comm_id.get(u) == comm_id.get(v):
             continue
+
+        # Check geographic constraints
         a, b = G.nodes[u], G.nodes[v]
-        lat1, lon1, lat2, lon2 = a.get("lat"), a.get("lon"), b.get("lat"), b.get("lon")
+        lat1, lon1 = a.get("lat"), a.get("lon")
+        lat2, lon2 = b.get("lat"), b.get("lon")
+
+        # Skip if location data is missing
         if None in (lat1, lon1, lat2, lon2):
             continue
+
         if haversine_km(lat1, lon1, lat2, lon2) <= max_distance_km:
             pairs.append((u, v))
+
     return pairs
 
-def greedy_edge_addition(G: nx.DiGraph, budget: int=5, max_distance_km: float=3000) -> Tuple[nx.DiGraph, List[Dict]]:
-    """Greedy add up to 'budget' bidirectional edges (u->v and v->u) subject to distance cap, maximizing GWCC and ASPL improvements."""
+def greedy_edge_addition(
+    G: nx.DiGraph,
+    budget: int = 5,
+    max_distance_km: float = 3000
+) -> Tuple[nx.DiGraph, List[Dict]]:
+    """
+    Greedily adds edges to the graph to maximize robustness metrics.
+
+    The algorithm iteratively adds the 'best' edge from a candidate set.
+    The 'best' edge is defined as the one that maximizes the Giant Weakly Connected
+    Component (GWCC) fraction. Ties are broken by minimizing the Average Shortest
+    Path Length (ASPL) within the GWCC.
+
+    Args:
+        G: The input directed graph.
+        budget: The number of edges (bidirectional) to add.
+        max_distance_km: The maximum allowed length for a new edge.
+
+    Returns:
+        A tuple containing the modified graph and a log of the additions.
+    """
     H = G.copy()
     log = []
+
     for b in range(budget):
-        best_pair, best_score, best_report = None, float("-inf"), None
+        best_pair = None
+        best_score = float("-inf")
+        best_report = None
+
+        # Iterate through candidate pairs to find the optimal addition
+        # Note: This can be computationally expensive; the candidate set is limited by heuristics.
         for (u, v) in _candidate_pairs(H, max_distance_km=max_distance_km):
-            # try adding u<->v
+            # Temporarily add bidirectional edge u <-> v
             H.add_edge(u, v)
             H.add_edge(v, u)
+
             rep = topological_report(H)
-            score = rep["gwcc_frac"] - rep["aspl_gwcc"]*1e-3  # lexicographic-ish: prioritize GWCC, lightly prefer lower ASPL
-            # revert
+
+            # Scoring function:
+            # Primary objective: Maximize GWCC fraction (connectivity).
+            # Secondary objective: Minimize ASPL (efficiency).
+            # We use a weighted sum where ASPL impact is scaled down to act as a tie-breaker.
+            # Subtracting ASPL because we want to minimize it.
+            score = rep["gwcc_frac"] - rep["aspl_gwcc"] * 1e-3
+
+            # Revert changes
             H.remove_edge(u, v)
             H.remove_edge(v, u)
+
             if score > best_score:
-                best_score, best_pair, best_report = score, (u, v), rep
+                best_score = score
+                best_pair = (u, v)
+                best_report = rep
+
         if best_pair is None:
             break
-        # commit
+
+        # Permanently add the best edge found in this iteration
         u, v = best_pair
         H.add_edge(u, v)
         H.add_edge(v, u)
+
         rep_after = topological_report(H)
-        log.append({"step": b+1, "added_edges": [(u,v),(v,u)], "report_after": rep_after})
+        log.append({
+            "step": b + 1,
+            "added_edges": [(u, v), (v, u)],
+            "report_after": rep_after
+        })
+
     return H, log
 
-def node_hardening_list(G: nx.DiGraph, top_n: int=10, metric: str="betweenness") -> List[str]:
+def node_hardening_list(G: nx.DiGraph, top_n: int = 10, metric: str = "betweenness") -> List[str]:
+    """
+    Identifies a list of critical nodes to 'harden' (protect) against attacks.
+
+    Hardening implies these nodes would be immune to random failures or targeted attacks
+    in a simulation that supports such a mechanism.
+
+    Args:
+        G: The input graph.
+        top_n: The number of nodes to identify.
+        metric: The centrality metric used to identify critical nodes.
+
+    Returns:
+        A list of node IDs sorted by criticality.
+    """
     if metric == "betweenness":
         scores = nx.betweenness_centrality(G)
     elif metric == "degree":
@@ -74,5 +171,7 @@ def node_hardening_list(G: nx.DiGraph, top_n: int=10, metric: str="betweenness")
     elif metric == "pagerank":
         scores = nx.pagerank(G, alpha=0.85)
     else:
+        # Default to degree if unknown metric
         scores = dict(G.degree())
-    return [n for n,_ in sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:top_n]]
+
+    return [n for n, _ in sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:top_n]]

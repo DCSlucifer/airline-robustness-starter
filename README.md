@@ -1,70 +1,129 @@
-# Airline Network Robustness — Starter Kit
+# Airline Network Robustness Analysis Framework
 
-This starter kit matches your proposal for **“Airline Network Robustness: Stress‑Testing Global Air Connectivity.”**  
-It gives you a reproducible skeleton, sample data, and ready-to-run scripts.
+## Overview
 
-## Quick start
+The **Airline Network Robustness Analysis Framework** is a comprehensive tool designed to stress-test global air connectivity. By modeling the global aviation network as a complex graph, this project enables researchers and analysts to simulate various disruption scenarios—ranging from targeted attacks to random failures—and evaluate the effectiveness of strategic defense mechanisms.
+
+This framework integrates advanced graph theory metrics, geographic spatial analysis, and interactive visualizations to provide deep insights into network resilience, critical infrastructure identification, and topological efficiency.
+
+## Key Features
+
+### 🛡️ Attack Simulations
+Simulate diverse disruption scenarios to test network resilience:
+*   **Targeted Node Removal:** Attacks based on centrality metrics (Degree, Betweenness, PageRank, Collective Influence). Supports **adaptive** (recomputed after each step) and **static** modes.
+*   **Random Failures:** Monte Carlo simulations to model random equipment failures or disruptions.
+*   **Edge-Based Attacks:** Targeted removal of high-betweenness edges and "community bridges" that connect distinct network clusters.
+*   **Geographic Disruptions:** Spatially localized failures affecting all airports within a specific radius of a coordinate.
+
+### 🛡️ Defense Strategies
+Evaluate mitigation strategies to improve network robustness:
+*   **Greedy Edge Addition:** Heuristic algorithms to strategically add routes that maximize the Giant Weakly Connected Component (GWCC) and minimize Average Shortest Path Length (ASPL), subject to geographic distance constraints.
+*   **Node Hardening:** Identification of critical nodes that require reinforced infrastructure or operational redundancy.
+
+### 📊 Comprehensive Metrics
+Quantify network health using rigorous topological metrics:
+*   **Connectivity:** Giant Weakly/Strongly Connected Components (GWCC/GSCC) and component counts.
+*   **Efficiency:** Average Shortest Path Length (ASPL) and Network Diameter.
+*   **Reachability:** Percentage of Origin-Destination (OD) pairs reachable within a specified number of hops (*H*).
+
+### 📈 Visualization
+*   **Interactive Dashboard:** A Streamlit-based application for real-time data exploration, attack/defense simulation, and result visualization.
+*   **Geospatial Mapping:** 3D interactive maps using PyDeck to visualize network structure and node importance.
+*   **Robustness Curves:** Plot network degradation profiles under various attack strategies.
+
+## Project Structure
+
+```text
+airline-robustness-starter/
+├── config/                 # Configuration files
+│   └── default.yaml        # Default simulation parameters
+├── data/                   # Data directory (place OpenFlights CSVs here)
+│   ├── airports.csv        # Airport metadata
+│   └── routes.csv          # Route information
+├── outputs/                # Simulation results, logs, and figures
+├── src/                    # Source code
+│   ├── app/                # Streamlit application
+│   │   └── streamlit_app.py
+│   ├── attacks.py          # Attack simulation logic
+│   ├── centrality.py       # Centrality metric calculations
+│   ├── data_io.py          # Data loading and processing
+│   ├── defenses.py         # Defense strategy implementation
+│   ├── geo.py              # Geographic utility functions
+│   ├── graph_build.py      # Graph construction
+│   ├── metrics.py          # Topological metric calculations
+│   ├── simulate.py         # CLI entry point for simulations
+│   └── viz.py              # Static plotting utilities
+├── tests/                  # Unit tests
+└── requirements.txt        # Python dependencies
+```
+
+## Installation
+
+1.  **Clone the repository:**
+    ```bash
+    git clone <repository-url>
+    cd airline-robustness-starter
+    ```
+
+2.  **Create a virtual environment:**
+    ```bash
+    # Windows
+    python -m venv .venv
+    .venv\Scripts\activate
+
+    # macOS/Linux
+    python3 -m venv .venv
+    source .venv/bin/activate
+    ```
+
+3.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+## Usage
+
+### 1. Interactive Dashboard (Recommended)
+Launch the Streamlit application to explore the data and run simulations interactively:
 
 ```bash
-# 1) Create a virtual environment (any method you prefer is fine)
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# macOS/Linux:
-source .venv/bin/activate
-
-# 2) Install dependencies
-pip install -r requirements.txt
-
-# 3) (Optional) Put the OpenFlights CSVs in ./data : airports.dat and routes.dat
-#    Or keep using the small sample CSVs included for smoke testing.
-
-# 4) Run a quick simulation on the sample data
-python src/simulate.py --attack targeted_nodes --metric degree --k 3
-
-# 5) Launch the interactive demo
 streamlit run src/app/streamlit_app.py
 ```
+The dashboard allows you to:
+*   Load and visualize the network on an interactive 3D map.
+*   Calculate and view node rankings.
+*   Run targeted attacks and visualize the impact.
+*   Simulate defense strategies and see the improvement in metrics.
 
-## Expected folder layout
+### 2. Command Line Interface (CLI)
+Run batch simulations using the `simulate.py` script.
 
-```
-airline-robustness-starter/
-├─ config/
-│  └─ default.yaml
-├─ data/
-│  ├─ sample_airports.csv
-│  └─ sample_routes.csv
-├─ outputs/                       # metrics, figures and logs get saved here
-├─ src/
-│  ├─ attacks.py
-│  ├─ centrality.py
-│  ├─ data_io.py
-│  ├─ defenses.py
-│  ├─ geo.py
-│  ├─ graph_build.py
-│  ├─ metrics.py
-│  ├─ simulate.py                 # CLI to run experiments
-│  ├─ viz.py
-│  └─ app/streamlit_app.py        # interactive demo
-├─ tests/
-│  └─ test_toy.py
-├─ notebooks/
-│  └─ 00_quickstart.md
-└─ requirements.txt
+**Example: Targeted Degree Attack**
+```bash
+python src/simulate.py --attack targeted_nodes --metric degree --k 10 --adaptive
 ```
 
-## What’s included
+**Example: Random Failure Simulation**
+```bash
+python src/simulate.py --attack random_nodes --k 50 --repetitions 20
+```
 
-- **Attack models:** random failures, targeted (degree / betweenness / PageRank / Collective Influence), adaptive and static, edge-betweenness, geographic radius, community-bridge removal.
-- **Defense models:** greedy edge addition under a max-distance constraint, cross-community linking, basic node-hardening list.
-- **Metrics:** giant weakly/strongly connected components (GWCC/GSCC), components count, ASPL and diameter on GWCC, % OD pairs within *H* hops.
-- **Visualization:** quick Matplotlib plots and a Streamlit app.
+**Example: Defense Simulation**
+```bash
+python src/simulate.py --defense greedy_edge_addition --budget 5
+```
 
-> ⚠️ The sample data are tiny and only for smoke tests. Use OpenFlights for real results. See `src/data_io.py` for loading helpers and column expectations.
+### 3. Configuration
+Default parameters are stored in `config/default.yaml`. You can modify this file to adjust default paths, simulation parameters, and algorithm settings.
 
-## Tips
+## Data Sources
 
-- For large networks, prefer **`--adaptive false`** first, then turn it on for the final runs.
-- Re-run centralities when changing the underlying graph (e.g., after removing nodes in adaptive mode).
-- Save run configurations to `outputs/run_*.json` to keep a full audit trail.
+This project is designed to work with airline data such as the [OpenFlights dataset](https://openflights.org/data.html).
+*   **Airports:** Requires columns `iata`, `lat`, `lon`, `name`, `city`, `country`.
+*   **Routes:** Requires columns `source_iata`, `dest_iata`.
 
+Place your CSV files in the `data/` directory and update the paths in the Streamlit app or `config/default.yaml`.
+
+## License
+
+This project is licensed under the MIT License. See the `LICENSE` file for details.
