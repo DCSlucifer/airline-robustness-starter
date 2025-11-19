@@ -1,0 +1,10 @@
+{
+  "n_nodes": 6073,
+  "n_edges": 37041,
+  "gwcc_frac": 0.5320270047752347,
+  "gscc_frac": 0.5252758109665734,
+  "n_components": 2823,
+  "aspl_gwcc": 3.967121720407852,
+  "diameter_gwcc": 12,
+  "pct_od_within_H": 0.7292795317804589
+}

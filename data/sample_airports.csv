@@ -1,0 +1,6 @@
+airport_id,name,city,country,iata,icao,lat,lon
+1,Alpha Intl,Alphaville,Neverland,AAA,ALPH,0.0,0.0
+2,Bravo Hub,Bravoton,Neverland,BBB,BRAV,10.0,10.0
+3,Charlie Field,Charlestown,Neverland,CCC,CHAR,20.0,0.0
+4,Delta Gate,Deltacity,Neverland,DDD,DELT,30.0,10.0
+5,Echo Port,Echoville,Neverland,EEE,ECHO,40.0,0.0

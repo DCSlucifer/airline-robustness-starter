@@ -1,0 +1,44 @@
+[
+  {
+    "step": 1,
+    "removed_node": "FRA",
+    "report": {
+      "n_nodes": 6072,
+      "n_edges": 36564,
+      "gwcc_frac": 0.5319499341238472,
+      "gscc_frac": 0.525197628458498,
+      "n_components": 2823,
+      "aspl_gwcc": 3.975371991635402,
+      "diameter_gwcc": 12,
+      "pct_od_within_H": 0.7267796584168051
+    }
+  },
+  {
+    "step": 2,
+    "removed_node": "CDG",
+    "report": {
+      "n_nodes": 6071,
+      "n_edges": 36096,
+      "gwcc_frac": 0.5317081205732169,
+      "gscc_frac": 0.5251194201943666,
+      "n_components": 2824,
+      "aspl_gwcc": 3.9932364740039987,
+      "diameter_gwcc": 12,
+      "pct_od_within_H": 0.7204352295474714
+    }
+  },
+  {
+    "step": 3,
+    "removed_node": "AMS",
+    "report": {
+      "n_nodes": 6070,
+      "n_edges": 35637,
+      "gwcc_frac": 0.5316309719934103,
+      "gscc_frac": 0.5250411861614498,
+      "n_components": 2824,
+      "aspl_gwcc": 4.008583612656002,
+      "diameter_gwcc": 12,
+      "pct_od_within_H": 0.7153563844737646
+    }
+  }
+]

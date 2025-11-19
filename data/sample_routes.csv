@@ -1,0 +1,8 @@
+source_iata,dest_iata
+AAA,BBB
+BBB,CCC
+CCC,DDD
+DDD,EEE
+EEE,BBB
+BBB,AAA
+AAA,CCC

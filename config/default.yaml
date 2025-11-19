@@ -1,0 +1,17 @@
+# Default experiment configuration
+random_seed: 42
+hops_H: 4 # for % OD within H hops
+repetitions_R: 10 # for random failures
+adaptive: true # recompute score after each removal
+distance_km_max: 3000 # edge-addition spatial constraint
+budget_b: 5 # number of edges to add
+k_nodes: 10 # nodes to remove in targeted attack
+m_edges: 20 # edges to remove in edge attack
+collective_influence_l: 2 # CI radius l
+
+# Data files (update for OpenFlights)
+airports_csv: data/airports.csv
+routes_csv: data/routes.csv
+
+# Output directory
+output_dir: outputs
