@@ -2,316 +2,306 @@
 Streamlit application for interactive airline network robustness analysis.
 
 Provides a web UI for exploring network metrics, running attack simulations,
-and testing defense strategies.
+and testing defense strategies with visual hierarchy and attack/defense replay.
 """
-# --- IMPORTS ---
 import streamlit as st
 import pandas as pd
 import networkx as nx
-import json
 import pydeck as pdk
 from pathlib import Path
 import sys
 import os
+from typing import Set, Tuple, List, Dict, Any, Optional
 
-# Ensure Python can find the project root directory (airline-robustness-starter)
-ROOT = Path(__file__).resolve().parents[2]  # Move up 2 levels from src/app/
+# Project root setup
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# --- SECURITY: Path validation ---
 ALLOWED_DATA_DIR = (ROOT / "data").resolve()
 
+
 def sanitize_path(filename: str) -> Path:
-    """
-    Validates user-provided filename is within allowed data directory.
-
-    Prevents path traversal attacks (e.g., '../../../etc/passwd').
-
-    Args:
-        filename: User-provided filename (not full path).
-
-    Returns:
-        Resolved Path object within allowed directory.
-
-    Raises:
-        ValueError: If path escapes allowed directory.
-        FileNotFoundError: If file does not exist.
-    """
-    # Remove any path components - only allow filenames
+    """Validates user-provided filename is within allowed data directory."""
     clean_name = os.path.basename(filename)
     resolved = (ALLOWED_DATA_DIR / clean_name).resolve()
-
-    # Verify it's within allowed directory
     if not str(resolved).startswith(str(ALLOWED_DATA_DIR)):
         raise ValueError(f"Access denied: '{filename}' is outside allowed directory")
-
     if not resolved.exists():
         raise FileNotFoundError(f"File not found: {clean_name}")
-
     return resolved
 
-# Absolute imports (avoiding relative imports like '..')
+
+# Imports
 from src.data_io import load_airports, load_routes, merge_airports_routes
 from src.graph_build import build_digraph
-from src.centrality import node_centralities
 from src.metrics import topological_report
 from src.attacks import (
     targeted_node_removal,
     edge_betweenness_attack,
     geographic_attack_radius,
     community_bridge_attack,
-    random_node_failures # Explicitly import this
+    random_node_failures,
 )
-from src.defenses import greedy_edge_addition
-from src.constants import MAX_DISPLAY_EDGES
+from src.defenses import greedy_edge_addition, node_hardening_list
+from src.constants import DEFAULT_TOP_N_HIGHLIGHTED
+from src.clustering import (
+    community_clustering,
+    geographic_clustering,
+    cluster_aggregates,
+    get_unclustered_nodes,
+)
+from src.viz import compute_node_emphasis, build_node_layer, build_edge_layer, build_cluster_layer
 
-# --- STREAMLIT APP CONFIGURATION ---
-st.set_page_config(page_title="Airline Network Robustness", layout="wide")
 
-st.title("✈️ Airline Network Robustness — Interactive Demo")
+# --- Caching ---
+@st.cache_data(ttl=300)
+def cached_community_clustering(_hash: str, G: nx.DiGraph) -> Dict[str, int]:
+    return community_clustering(G)
 
-# Sidebar for data loading
+
+@st.cache_data(ttl=300)
+def cached_geographic_clustering(_hash: str, G: nx.DiGraph) -> Dict[str, int]:
+    return geographic_clustering(G)
+
+
+def graph_hash(G: nx.DiGraph) -> str:
+    return f"{G.number_of_nodes()}_{G.number_of_edges()}"
+
+
+# --- App Config ---
+st.set_page_config(page_title="Airline Network Robustness", layout="wide", initial_sidebar_state="collapsed")
+
+# Minimal CSS
+st.markdown("""
+<style>
+    .metric-card {
+        background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 8px;
+    }
+    .metric-label { color: #888; font-size: 11px; text-transform: uppercase; }
+    .metric-value { color: #fff; font-size: 20px; font-weight: 600; }
+    .metric-delta-up { color: #4ade80; font-size: 11px; }
+    .metric-delta-down { color: #f87171; font-size: 11px; }
+    .stRadio > div { flex-direction: row; gap: 8px; }
+    .stRadio label { font-size: 13px; }
+</style>
+""", unsafe_allow_html=True)
+
+
+def metric_card(label: str, value: Any, delta: Optional[float] = None) -> str:
+    delta_html = ""
+    if delta is not None and delta != 0:
+        cls = "metric-delta-up" if delta > 0 else "metric-delta-down"
+        sign = "+" if delta > 0 else ""
+        delta_html = f'<div class="{cls}">{sign}{delta:.1%}</div>'
+
+    if isinstance(value, float):
+        value_str = "∞" if value == float('inf') else f"{value:.2f}" if value > 1 else f"{value:.1%}"
+    else:
+        value_str = str(value)
+
+    return f'<div class="metric-card"><div class="metric-label">{label}</div><div class="metric-value">{value_str}</div>{delta_html}</div>'
+
+
+def extract_attack_data(log: List[Dict], step: int) -> Tuple[Set[str], Set[Tuple[str, str]]]:
+    nodes, edges = set(), set()
+    for i, entry in enumerate(log[:step]):
+        if "removed_node" in entry:
+            nodes.add(entry["removed_node"])
+        if "removed_nodes" in entry:
+            nodes.update(entry["removed_nodes"])
+        if "removed_edge" in entry:
+            edges.add(tuple(entry["removed_edge"]))
+        if "removed_edges" in entry:
+            edges.update(tuple(e) for e in entry["removed_edges"])
+    return nodes, edges
+
+
+def extract_defense_data(log: List[Dict], step: int) -> Set[Tuple[str, str]]:
+    edges = set()
+    for entry in log[:step]:
+        if "added_edges" in entry:
+            edges.update(tuple(e) for e in entry["added_edges"])
+    return edges
+
+
+# --- Session State ---
+for key, default in [("G", None), ("attack_log", []), ("defense_log", []), ("baseline_report", None), ("hardened_nodes", set())]:
+    if key not in st.session_state:
+        st.session_state[key] = default
+
+# --- Sidebar: Data Loading ---
 with st.sidebar:
-    st.header("Data Loading")
-    st.caption(f"Files must be in: {ALLOWED_DATA_DIR}")
-    airports_file = st.text_input("Airports CSV filename", "airports.csv")
-    routes_file = st.text_input("Routes CSV filename", "routes.csv")
+    st.subheader("Load Data")
+    airports_file = st.text_input("Airports", "airports.csv")
+    routes_file = st.text_input("Routes", "routes.csv")
 
-    if st.button("Load graph"):
+    if st.button("Load", type="primary"):
         try:
-            # Validate paths (security: prevent path traversal)
-            airports_path = sanitize_path(airports_file)
-            routes_path = sanitize_path(routes_file)
-
-            # Load and process data
-            airports = load_airports(str(airports_path))
-            routes = load_routes(str(routes_path))
+            airports = load_airports(str(sanitize_path(airports_file)))
+            routes = load_routes(str(sanitize_path(routes_file)))
             airports, routes = merge_airports_routes(airports, routes)
-
-            # Build the graph with distance weights
             G = build_digraph(airports, routes, add_distance=True)
-
-            # Store the graph in the session state for persistence across reruns
-            st.session_state["G"] = G
-            st.success(f"Loaded graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges.")
-        except ValueError as e:
-            st.error(f"Security error: {e}")
-        except FileNotFoundError as e:
-            st.error(f"File error: {e}")
+            st.session_state.update({"G": G, "baseline_report": topological_report(G), "attack_log": [], "defense_log": [], "hardened_nodes": set()})
+            st.success(f"{G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
         except Exception as e:
-            st.error(f"Error loading data: {e}")
+            st.error(str(e))
 
-# Retrieve the graph from session state
 G = st.session_state.get("G")
-
 if G is None:
-    st.info("Please load the graph from the sidebar to start.")
+    st.info("Open sidebar to load graph data.")
     st.stop()
 
-def render_map(G: nx.DiGraph):
-    """
-    Renders an interactive 3D map of the airline network using PyDeck.
+# --- Layout ---
+left, center, right = st.columns([1.2, 4, 1.2])
 
-    Nodes are displayed as scatter points, and edges are displayed as arcs.
-    For performance, the number of displayed edges is capped.
+# --- Left Panel ---
+with left:
+    st.caption("VISUALIZATION")
+    top_n = st.slider("Top-N nodes", 5, 50, DEFAULT_TOP_N_HIGHLIGHTED, key="top_n")
+    emphasis_metric = st.selectbox("Rank by", ["degree", "betweenness", "pagerank"], key="emph_metric")
+    labels_emphasized = st.checkbox("Labels: emphasized only", True, key="labels_emph")
+    cluster_mode = st.radio("Cluster", ["Off", "Community", "Geographic"], key="cluster", horizontal=True)
 
-    Args:
-        G: The input directed graph.
-    """
-    # Extract node data for plotting
-    nodes = []
-    for n, data in G.nodes(data=True):
-        if "lat" in data and "lon" in data:
-            nodes.append({
-                "iata": n,
-                "lat": data["lat"],
-                "lon": data["lon"],
-                "name": data.get("name", n)
-            })
-    df_nodes = pd.DataFrame(nodes)
+    st.caption("ATTACK")
+    attack_type = st.selectbox("Type", ["targeted_nodes", "edge_betweenness", "geographic_radius", "community_bridge"], key="atk_type", label_visibility="collapsed")
 
-    # Extract edge data (arcs)
-    arcs = []
-    # Limit edges for performance if needed.
-    # Rendering too many arcs can slow down the browser significantly.
-    edges_to_plot = list(G.edges())
-    if len(edges_to_plot) > MAX_DISPLAY_EDGES:
-        import random
-        edges_to_plot = random.sample(edges_to_plot, MAX_DISPLAY_EDGES)
-
-    for u, v in edges_to_plot:
-        if u in G.nodes and v in G.nodes:
-            u_data = G.nodes[u]
-            v_data = G.nodes[v]
-            # Ensure both endpoints have valid coordinates
-            if "lat" in u_data and "lon" in u_data and "lat" in v_data and "lon" in v_data:
-                arcs.append({
-                    "source": [u_data["lon"], u_data["lat"]],
-                    "target": [v_data["lon"], v_data["lat"]],
-                    "source_iata": u,
-                    "dest_iata": v
-                })
-    df_arcs = pd.DataFrame(arcs)
-
-    # Define map layers
-    layer_nodes = pdk.Layer(
-        "ScatterplotLayer",
-        df_nodes,
-        get_position=["lon", "lat"],
-        get_color=[200, 30, 0, 160],
-        get_radius=50000,
-        pickable=True,
-        radius_min_pixels=3,
-        radius_max_pixels=10,
-    )
-
-    layer_arcs = pdk.Layer(
-        "ArcLayer",
-        df_arcs,
-        get_source_position="source",
-        get_target_position="target",
-        get_source_color=[0, 128, 200, 80],
-        get_target_color=[200, 0, 80, 80],
-        get_width=1,
-        width_min_pixels=1,
-    )
-
-    # Set initial view state
-    view_state = pdk.ViewState(latitude=20.0, longitude=0.0, zoom=1.5, pitch=0)
-
-    # Render the deck
-    r = pdk.Deck(
-        layers=[layer_arcs, layer_nodes],
-        initial_view_state=view_state,
-        tooltip={"text": "{iata}: {name}"},
-        map_style="mapbox://styles/mapbox/light-v9"
-    )
-    st.pydeck_chart(r)
-
-# Tabs for different activities
-tab1, tab2, tab3 = st.tabs(["Explore & Rankings", "Attacks", "Defenses"])
-
-with tab1:
-    st.header("Network Overview & Rankings")
-
-    st.subheader("Global Connectivity Map")
-    if st.checkbox("Show Interactive Map", value=True):
-         render_map(G)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Topological Metrics")
-        if st.button("Calculate Baseline Metrics"):
-            rep = topological_report(G)
-            st.json(rep)
-
-    with col2:
-        st.subheader("Node Centrality Rankings")
-        if st.button("Calculate Rankings"):
-            with st.spinner("Computing centralities (this may take a moment)..."):
-                df_cent = node_centralities(G)
-                st.session_state["df_cent"] = df_cent
-            st.success("Done!")
-
-    if "df_cent" in st.session_state:
-        df = st.session_state["df_cent"]
-        st.dataframe(df.head(50))
-
-        st.download_button(
-            "Download Rankings CSV",
-            df.to_csv(index=False).encode("utf-8"),
-            "node_rankings.csv",
-            "text/csv",
-            key='download-csv'
-        )
-
-with tab2:
-    st.header("Run an Attack")
-    attack_type = st.selectbox("Attack Type", ["targeted_nodes", "random_nodes", "edge_betweenness", "geographic_radius", "community_bridge"])
-
-    colA, colB, colC = st.columns(3)
-
-    # Dynamic controls based on attack type
     if attack_type == "targeted_nodes":
-        with colA:
-            metric = st.selectbox("Targeted metric", ["degree","betweenness","pagerank","CI"])
-        with colB:
-            k = st.number_input("k nodes to remove", 1, 500, 10)
-        with colC:
-            adaptive = st.checkbox("Adaptive recomputation", value=True)
-
-    elif attack_type == "random_nodes":
-        with colA:
-            k = st.number_input("k nodes to remove", 1, 500, 10)
-        with colB:
-            R = st.number_input("Repetitions (R)", 1, 50, 5)
-        with colC:
-            st.write("") # Spacer
-
+        c1, c2 = st.columns(2)
+        atk_metric = c1.selectbox("Metric", ["degree", "betweenness", "pagerank"], key="atk_m")
+        atk_k = c2.number_input("k", 1, 100, 10, key="atk_k")
     elif attack_type == "edge_betweenness":
-        with colA:
-            m = st.number_input("m edges to remove", 1, 500, 10)
-        with colB:
-            adaptive = st.checkbox("Adaptive recomputation", value=True)
-        with colC:
-             st.write("")
-
+        atk_m = st.number_input("Edges (m)", 1, 100, 10, key="atk_edges")
     elif attack_type == "geographic_radius":
-        with colA:
-            lat = st.number_input("Center Lat", value=0.0, format="%.4f")
-        with colB:
-            lon = st.number_input("Center Lon", value=0.0, format="%.4f")
-        with colC:
-            radius = st.number_input("Radius (km)", value=1000.0, format="%.1f")
-
+        c1, c2, c3 = st.columns(3)
+        atk_lat = c1.number_input("Lat", value=40.0, key="atk_lat")
+        atk_lon = c2.number_input("Lon", value=-74.0, key="atk_lon")
+        atk_rad = c3.number_input("Radius km", value=500.0, key="atk_rad")
     elif attack_type == "community_bridge":
-        with colA:
-            m = st.number_input("m edges to remove", 1, 500, 10)
-        with colB:
-             st.write("")
-        with colC:
-             st.write("")
+        atk_m = st.number_input("Bridges (m)", 1, 50, 10, key="atk_br")
 
-    if st.button("Run Attack"):
-        with st.spinner("Simulating attack..."):
-            if attack_type == "targeted_nodes":
-                H, log = targeted_node_removal(G, k=int(k), metric=metric, adaptive=adaptive)
-                st.session_state["H"] = H
-                st.session_state["attack_log"] = log
-            elif attack_type == "random_nodes":
-                # Random returns a list of reports, not a single graph H
-                log = random_node_failures(G, k=int(k), R=int(R))
-                st.session_state["H"] = None # No single resulting graph
-                st.session_state["attack_log"] = log
-            elif attack_type == "edge_betweenness":
-                H, log = edge_betweenness_attack(G, m=int(m), adaptive=adaptive)
-                st.session_state["H"] = H
-                st.session_state["attack_log"] = log
-            elif attack_type == "geographic_radius":
-                H, info = geographic_attack_radius(G, (float(lat), float(lon)), float(radius))
-                st.session_state["H"] = H
-                st.session_state["attack_log"] = [info]
-            elif attack_type == "community_bridge":
-                H, info = community_bridge_attack(G, m=int(m))
-                st.session_state["H"] = H
-                st.session_state["attack_log"] = [info]
+    if st.button("Run Attack", type="primary", use_container_width=True):
+        with st.spinner("..."):
+            try:
+                if attack_type == "targeted_nodes":
+                    H, log = targeted_node_removal(G, k=atk_k, metric=atk_metric, adaptive=True)
+                elif attack_type == "edge_betweenness":
+                    H, log = edge_betweenness_attack(G, m=atk_m, adaptive=True)
+                elif attack_type == "geographic_radius":
+                    H, info = geographic_attack_radius(G, (atk_lat, atk_lon), atk_rad)
+                    log = [info]
+                elif attack_type == "community_bridge":
+                    H, info = community_bridge_attack(G, m=atk_m)
+                    log = [info]
+                st.session_state.update({"attack_log": log, "H_attack": H})
+                st.toast("Attack complete")
+            except Exception as e:
+                st.error(str(e))
 
-        st.success("Attack finished.")
-        st.json(st.session_state["attack_log"])
+    st.caption("DEFENSE")
+    c1, c2 = st.columns(2)
+    def_budget = c1.number_input("Budget", 1, 10, 3, key="def_b")
+    def_dist = c2.number_input("Max km", 500, 5000, 3000, key="def_d")
 
-with tab3:
-    st.header("Run a Defense")
-    budget = st.number_input("Budget (edges to add)", 1, 50, 3)
-    dist_cap = st.number_input("Max distance km", 100.0, 20000.0, 3000.0, step=100.0)
+    if st.button("Run Defense", use_container_width=True):
+        with st.spinner("..."):
+            try:
+                H, log = greedy_edge_addition(G, budget=def_budget, max_distance_km=float(def_dist))
+                st.session_state.update({"defense_log": log, "H_defense": H})
+                st.toast("Defense complete")
+            except Exception as e:
+                st.error(str(e))
 
-    if st.button("Run Defense"):
-        with st.spinner("Optimizing network..."):
-            H, log = greedy_edge_addition(G, budget=int(budget), max_distance_km=float(dist_cap))
-            st.session_state["H_def"] = H
-            st.session_state["defense_log"] = log
-        st.success("Defense finished.")
-        st.json(log)
+# --- Center: Map ---
+with center:
+    attack_log = st.session_state.get("attack_log", [])
+    defense_log = st.session_state.get("defense_log", [])
 
-st.markdown("---")
-st.markdown("Use the sidebar to load your own data.")
+    # Compact step controls
+    if attack_log or defense_log:
+        c1, c2 = st.columns(2)
+        attack_step = c1.slider("Attack step", 0, max(1, len(attack_log)), len(attack_log), key="atk_step") if attack_log else 0
+        defense_step = c2.slider("Defense step", 0, max(1, len(defense_log)), len(defense_log), key="def_step") if defense_log else 0
+    else:
+        attack_step, defense_step = 0, 0
+
+    removed_nodes, removed_edges = extract_attack_data(attack_log, attack_step)
+    added_edges = extract_defense_data(defense_log, defense_step)
+    hardened = st.session_state.get("hardened_nodes", set())
+
+    # Clustering
+    use_clusters = cluster_mode != "Off"
+    clusters, cluster_aggs = {}, None
+    if use_clusters:
+        h = graph_hash(G)
+        clusters = cached_community_clustering(h, G) if cluster_mode == "Community" else cached_geographic_clustering(h, G)
+        cluster_aggs = cluster_aggregates(G, clusters)
+
+    # Node emphasis
+    emphasis = compute_node_emphasis(G, top_n, emphasis_metric, removed_nodes, hardened)
+
+    # Build layers
+    layers = build_edge_layer(G, removed_edges, added_edges)
+
+    if use_clusters and cluster_aggs:
+        cl = build_cluster_layer(cluster_aggs)
+        if cl:
+            layers.append(cl)
+        unclustered = get_unclustered_nodes(G, clusters)
+        sub_G = G.subgraph(unclustered)
+        sub_emph = {n: emphasis.get(n, {}) for n in unclustered}
+        nl, _ = build_node_layer(sub_G, sub_emph, labels_emphasized)
+        if nl:
+            layers.append(nl)
+    else:
+        nl, _ = build_node_layer(G, emphasis, labels_emphasized)
+        if nl:
+            layers.append(nl)
+
+    deck = pdk.Deck(
+        layers=layers,
+        initial_view_state=pdk.ViewState(latitude=20, longitude=0, zoom=1.4, pitch=0),
+        tooltip={"text": "{iata}: {name}"},
+        map_style="mapbox://styles/mapbox/dark-v10",
+    )
+    st.pydeck_chart(deck, use_container_width=True)
+
+    # Compact legend
+    st.markdown('<div style="text-align:center;font-size:11px;color:#888;margin-top:4px;">🟠 Top-N  🔴 Removed  🟢 Added  🔵 Hardened  🟣 Cluster</div>', unsafe_allow_html=True)
+
+# --- Right: Metrics ---
+with right:
+    current_G = st.session_state.get("H_attack") or st.session_state.get("H_defense") or G
+    if current_G is None or current_G.number_of_nodes() == 0:
+        current_G = G
+
+    report = topological_report(current_G)
+    baseline = st.session_state.get("baseline_report") or report
+
+    def delta(k):
+        if baseline and k in baseline and baseline[k] and baseline[k] != 0:
+            return (report[k] - baseline[k]) / abs(baseline[k])
+        return None
+
+    st.caption("CONNECTIVITY")
+    st.markdown(metric_card("GWCC", report["gwcc_frac"], delta("gwcc_frac")), unsafe_allow_html=True)
+    st.markdown(metric_card("GSCC", report["gscc_frac"], delta("gscc_frac")), unsafe_allow_html=True)
+    st.markdown(metric_card("Components", report["n_components"]), unsafe_allow_html=True)
+
+    st.caption("EFFICIENCY")
+    st.markdown(metric_card("ASPL", report["aspl_gwcc"]), unsafe_allow_html=True)
+    st.markdown(metric_card("Diameter", report["diameter_gwcc"]), unsafe_allow_html=True)
+    st.markdown(metric_card("OD ≤4 hops", report["pct_od_within_H"]), unsafe_allow_html=True)
+
+    st.caption("SIZE")
+    st.markdown(metric_card("Nodes", report["n_nodes"]), unsafe_allow_html=True)
+    st.markdown(metric_card("Edges", report["n_edges"]), unsafe_allow_html=True)
+
+    # Compact log summary
+    if attack_log:
+        st.caption(f"Attack: {len(removed_nodes)} nodes, {len(removed_edges)} edges removed")
+    if defense_log:
+        st.caption(f"Defense: {len(added_edges)} edges added")
