@@ -56,13 +56,15 @@ from src.viz import compute_node_emphasis, build_node_layer, build_edge_layer, b
 
 # --- Caching ---
 @st.cache_data(ttl=300)
-def cached_community_clustering(_hash: str, G: nx.DiGraph) -> Dict[str, int]:
-    return community_clustering(G)
+def cached_community_clustering(_hash: str, _G: nx.DiGraph) -> Dict[str, int]:
+    """Cached community detection. _G prefixed to skip hashing."""
+    return community_clustering(_G)
 
 
 @st.cache_data(ttl=300)
-def cached_geographic_clustering(_hash: str, G: nx.DiGraph) -> Dict[str, int]:
-    return geographic_clustering(G)
+def cached_geographic_clustering(_hash: str, _G: nx.DiGraph) -> Dict[str, int]:
+    """Cached geographic clustering. _G prefixed to skip hashing."""
+    return geographic_clustering(_G)
 
 
 def graph_hash(G: nx.DiGraph) -> str:
