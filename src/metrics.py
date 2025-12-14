@@ -129,13 +129,14 @@ def percent_od_within_hops(G: nx.DiGraph, H: int = 4) -> float:
 
     return count / total
 
-def topological_report(G: nx.DiGraph, H: int = 4) -> Dict[str, Any]:
+def topological_report(G: nx.DiGraph, H: int = 4, fast_mode: bool = False) -> Dict[str, Any]:
     """
     Generates a comprehensive report of topological metrics for the graph.
 
     Args:
         G: The input directed graph.
         H: The hop limit for the reachability metric.
+        fast_mode: If True, skip expensive ASPL/diameter/OD computations for UI responsiveness.
 
     Returns:
         A dictionary containing key metrics:
@@ -143,15 +144,21 @@ def topological_report(G: nx.DiGraph, H: int = 4) -> Dict[str, Any]:
         - gwcc_frac: Fraction of nodes in the Giant Weakly Connected Component.
         - gscc_frac: Fraction of nodes in the Giant Strongly Connected Component.
         - n_components: Number of weakly connected components.
-        - aspl_gwcc: Average Shortest Path Length of the GWCC.
-        - diameter_gwcc: Diameter of the GWCC.
-        - pct_od_within_H: Percentage of pairs reachable within H hops.
+        - aspl_gwcc: Average Shortest Path Length of the GWCC (inf if fast_mode).
+        - diameter_gwcc: Diameter of the GWCC (0 if fast_mode).
+        - pct_od_within_H: Percentage of pairs reachable within H hops (0 if fast_mode).
     """
     n = G.number_of_nodes()
     gw = gwcc(G)
     gs = gscc(G)
-    aspl, diam = aspl_and_diameter_on_gwcc(G)
-    pctH = percent_od_within_hops(G, H=H)
+
+    if fast_mode:
+        # Skip expensive computations for interactive use
+        aspl, diam = float("inf"), 0
+        pctH = 0.0
+    else:
+        aspl, diam = aspl_and_diameter_on_gwcc(G)
+        pctH = percent_od_within_hops(G, H=H)
 
     return {
         "n_nodes": n,

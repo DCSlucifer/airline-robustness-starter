@@ -34,18 +34,19 @@ EARTH_RADIUS_KM = 6371.0  # Earth's radius in kilometers (for Haversine formula)
 DEFAULT_TOP_N_HIGHLIGHTED = 20  # Default number of top nodes to emphasize
 NODE_SIZE_EMPHASIZED = 80000  # Radius for emphasized nodes (meters)
 NODE_SIZE_DIMMED = 25000  # Radius for dimmed nodes (meters)
+NODE_SIZE_ATTACKED = 150000  # EXTRA large for attacked nodes - makes them very visible
 NODE_OPACITY_EMPHASIZED = 220  # Alpha for emphasized nodes (0-255)
 NODE_OPACITY_DIMMED = 50  # Alpha for dimmed nodes (0-255)
 
 # ============================================================================
-# Attack/Defense Visualization Colors (RGBA)
+# Attack/Defense Visualization Colors (RGBA) - Made more prominent
 # ============================================================================
 NORMAL_NODE_COLOR = [100, 100, 180, 160]  # Blue-gray for normal nodes
 EMPHASIZED_NODE_COLOR = [255, 140, 0, 220]  # Orange for top-N nodes
-ATTACK_NODE_COLOR = [220, 50, 50, 220]  # Red for removed nodes
-ATTACK_EDGE_COLOR = [220, 50, 50, 150]  # Red for removed edges
-DEFENSE_EDGE_COLOR = [50, 200, 100, 180]  # Green for added edges
-HARDENED_NODE_COLOR = [50, 150, 220, 220]  # Blue for hardened nodes
+ATTACK_NODE_COLOR = [255, 0, 0, 255]  # Bright red for removed nodes (full opacity)
+ATTACK_EDGE_COLOR = [255, 50, 50, 200]  # Bright red for removed edges
+DEFENSE_EDGE_COLOR = [0, 255, 100, 255]  # Bright green for added edges (full opacity)
+HARDENED_NODE_COLOR = [0, 150, 255, 255]  # Bright blue for hardened nodes
 CLUSTER_NODE_COLOR = [120, 80, 200, 180]  # Purple for cluster super-nodes
 
 # ============================================================================

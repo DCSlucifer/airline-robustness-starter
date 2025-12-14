@@ -17,6 +17,7 @@ from .constants import (
     MAX_DISPLAY_EDGES,
     NODE_SIZE_EMPHASIZED,
     NODE_SIZE_DIMMED,
+    NODE_SIZE_ATTACKED,
     NODE_OPACITY_EMPHASIZED,
     NODE_OPACITY_DIMMED,
     NORMAL_NODE_COLOR,
@@ -118,7 +119,7 @@ def compute_node_emphasis(
     for node in G.nodes():
         if node in removed_nodes:
             emphasis[node] = {
-                "size": NODE_SIZE_EMPHASIZED,
+                "size": NODE_SIZE_ATTACKED,  # Extra large for visibility
                 "color": ATTACK_NODE_COLOR,
                 "opacity": NODE_OPACITY_EMPHASIZED,
                 "is_emphasized": True,
@@ -230,10 +231,11 @@ def build_edge_layer(
     # Add removed edges back for visualization
     all_edges.extend(removed_edges)
 
-    # Sample if too many
-    import random
+    # Sample if too many (with fixed seed for reproducibility)
     if len(all_edges) > sample_limit:
-        all_edges = random.sample(all_edges, sample_limit)
+        import random
+        rng = random.Random(42)  # Fixed seed for reproducible visualization
+        all_edges = rng.sample(all_edges, sample_limit)
 
     for u, v in all_edges:
         # Get coordinates
@@ -290,7 +292,7 @@ def build_edge_layer(
             width_min_pixels=2,
         ))
 
-    # Defense edges (green, prominent)
+    # Defense edges (green, prominent - EXTRA thick for visibility)
     if defense_arcs:
         df_defense = pd.DataFrame(defense_arcs)
         layers.append(pdk.Layer(
@@ -300,8 +302,8 @@ def build_edge_layer(
             get_target_position="target",
             get_source_color=DEFENSE_EDGE_COLOR,
             get_target_color=DEFENSE_EDGE_COLOR,
-            get_width=3,
-            width_min_pixels=2,
+            get_width=6,  # Extra thick
+            width_min_pixels=4,
         ))
 
     return layers

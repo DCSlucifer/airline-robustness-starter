@@ -90,7 +90,13 @@ def _rank_nodes(G: nx.DiGraph, metric: str = "degree", l_ci: int = 2) -> List[An
     if metric == "degree":
         scores = dict(G.degree())
     elif metric == "betweenness":
-        scores = nx.betweenness_centrality(G)
+        # Use approximate betweenness for large graphs (>500 nodes)
+        n_nodes = G.number_of_nodes()
+        if n_nodes > 500:
+            k_samples = min(200, n_nodes)
+            scores = nx.betweenness_centrality(G, k=k_samples)
+        else:
+            scores = nx.betweenness_centrality(G)
     elif metric == "pagerank":
         scores = nx.pagerank(G, alpha=0.85)
     elif metric == "CI":
@@ -106,7 +112,9 @@ def targeted_node_removal(
     k: int,
     metric: str = "degree",
     adaptive: bool = True,
-    l_ci: int = 2
+    l_ci: int = 2,
+    fast_mode: bool = False,
+    report_every_n: int = 1,
 ) -> Tuple[nx.DiGraph, List[Dict]]:
     """
     Simulates a targeted attack by removing `k` nodes based on a centrality metric.
@@ -118,6 +126,8 @@ def targeted_node_removal(
         adaptive: If True, recomputes centrality scores after each removal.
                   If False, computes scores once at the beginning.
         l_ci: Distance parameter for Collective Influence metric.
+        fast_mode: If True, use lightweight topological reports (skip ASPL/diameter).
+        report_every_n: Compute full report every N steps (1 = every step).
 
     Returns:
         A tuple containing:
@@ -161,11 +171,21 @@ def targeted_node_removal(
 
         node = order[0]
         H.remove_node(node)
-        log.append({
-            "step": step + 1,
-            "removed_node": node,
-            "report": topological_report(H)
-        })
+
+        # Only compute expensive report every N steps or on final step
+        if (step + 1) % report_every_n == 0 or step == k - 1:
+            log.append({
+                "step": step + 1,
+                "removed_node": node,
+                "report": topological_report(H, fast_mode=fast_mode)
+            })
+        else:
+            # Lightweight log entry without full report
+            log.append({
+                "step": step + 1,
+                "removed_node": node,
+                "report": None
+            })
 
     return H, log
 
