@@ -6,14 +6,24 @@ including targeted node removal based on centrality metrics, random node failure
 edge removal based on betweenness, and geographic attacks.
 """
 from __future__ import annotations
-from typing import List, Tuple, Dict, Iterable, Optional, Set
+from typing import Any, List, Tuple, Dict, Iterable, Optional, Set
+import warnings
+
+__all__ = [
+    "collective_influence_scores",
+    "targeted_node_removal",
+    "random_node_failures",
+    "edge_betweenness_attack",
+    "geographic_attack_radius",
+    "community_bridge_attack",
+]
 import random
 import networkx as nx
 import pandas as pd
 from .metrics import topological_report
 from .geo import nodes_within_radius_km
 
-def collective_influence_scores(G: nx.Graph, l: int = 2) -> Dict[any, float]:
+def collective_influence_scores(G: nx.Graph, l: int = 2) -> Dict[Any, float]:
     """
     Calculates the Collective Influence (CI) score for each node in the graph.
 
@@ -65,7 +75,7 @@ def collective_influence_scores(G: nx.Graph, l: int = 2) -> Dict[any, float]:
 
     return scores
 
-def _rank_nodes(G: nx.DiGraph, metric: str = "degree", l_ci: int = 2) -> List[any]:
+def _rank_nodes(G: nx.DiGraph, metric: str = "degree", l_ci: int = 2) -> List[Any]:
     """
     Ranks nodes in the graph based on a specified centrality metric.
 
@@ -117,6 +127,20 @@ def targeted_node_removal(
     H = G.copy()
     log = []
 
+    # Input validation
+    if k <= 0:
+        warnings.warn("k must be positive, returning unchanged graph", UserWarning)
+        return H, log
+
+    n_nodes = G.number_of_nodes()
+    if n_nodes == 0:
+        warnings.warn("Graph is empty, nothing to remove", UserWarning)
+        return H, log
+
+    if k > n_nodes:
+        warnings.warn(f"k={k} exceeds node count ({n_nodes}), capping at {n_nodes}", UserWarning)
+        k = n_nodes
+
     # Pre-calculate order if not adaptive
     initial_order = []
     if not adaptive:
@@ -158,8 +182,25 @@ def random_node_failures(G: nx.DiGraph, k: int, R: int = 10, seed: int = 42) -> 
     Returns:
         A list of dictionaries, each containing the report for a single simulation run.
     """
-    random.seed(seed)
+    # Input validation
+    if k <= 0:
+        warnings.warn("k must be positive, returning empty results", UserWarning)
+        return []
+
+    if R <= 0:
+        warnings.warn("R must be positive, returning empty results", UserWarning)
+        return []
+
     nodes = list(G.nodes())
+    if not nodes:
+        warnings.warn("Graph is empty, nothing to remove", UserWarning)
+        return []
+
+    if k > len(nodes):
+        warnings.warn(f"k={k} exceeds node count ({len(nodes)}), capping at {len(nodes)}", UserWarning)
+        k = len(nodes)
+
+    random.seed(seed)
     reports = []
 
     for r in range(R):
@@ -185,6 +226,7 @@ def edge_betweenness_attack(G: nx.DiGraph, m: int, adaptive: bool = True) -> Tup
         G: The input graph.
         m: The number of edges to remove.
         adaptive: If True, recomputes edge betweenness after each removal.
+                  If False, computes scores once at the beginning (faster but less accurate).
 
     Returns:
         A tuple containing the modified graph and the attack log.
@@ -192,35 +234,58 @@ def edge_betweenness_attack(G: nx.DiGraph, m: int, adaptive: bool = True) -> Tup
     H = G.copy()
     log = []
 
-    for step in range(m):
-        # Compute edge betweenness on the undirected view.
-        # Robustness is usually about structural connectivity, which is best captured
-        # by undirected paths for this metric.
-        eb = nx.edge_betweenness_centrality(H.to_undirected())
+    # Input validation
+    if m <= 0:
+        return H, log
 
+    m = min(m, H.number_of_edges())  # Cap at available edges
+
+    if not adaptive:
+        # NON-ADAPTIVE MODE: Pre-compute edge betweenness ranking once
+        eb = nx.edge_betweenness_centrality(G.to_undirected())
         if not eb:
-            break
+            return H, log
 
-        # Find the edge with the maximum score
-        emax = max(eb, key=eb.get)
+        # Sort all edges by betweenness score descending
+        ranked_edges = sorted(eb.items(), key=lambda kv: kv[1], reverse=True)
 
-        # Remove the edge from the directed graph (checking both directions if necessary)
-        if H.has_edge(*emax):
-            H.remove_edge(*emax)
-        elif H.has_edge(emax[1], emax[0]):
-            H.remove_edge(emax[1], emax[0])
+        for step, (edge, _score) in enumerate(ranked_edges[:m]):
+            # Remove the edge from the directed graph (check both directions)
+            if H.has_edge(*edge):
+                H.remove_edge(*edge)
+            elif H.has_edge(edge[1], edge[0]):
+                H.remove_edge(edge[1], edge[0])
+            else:
+                # Edge already removed (can happen with undirected view)
+                continue
 
-        log.append({
-            "step": step + 1,
-            "removed_edge": emax,
-            "report": topological_report(H)
-        })
+            log.append({
+                "step": step + 1,
+                "removed_edge": edge,
+                "report": topological_report(H)
+            })
+    else:
+        # ADAPTIVE MODE: Recompute edge betweenness after each removal
+        for step in range(m):
+            eb = nx.edge_betweenness_centrality(H.to_undirected())
 
-        if not adaptive:
-            # Non-adaptive version not fully implemented for edge betweenness in this snippet
-            # as it requires sorting all edges initially. For now, we break or could implement it.
-            # Assuming the user wants to stop if non-adaptive is requested but not supported logic exists.
-            break
+            if not eb:
+                break
+
+            # Find the edge with the maximum score
+            emax = max(eb, key=eb.get)
+
+            # Remove the edge from the directed graph (check both directions)
+            if H.has_edge(*emax):
+                H.remove_edge(*emax)
+            elif H.has_edge(emax[1], emax[0]):
+                H.remove_edge(emax[1], emax[0])
+
+            log.append({
+                "step": step + 1,
+                "removed_edge": emax,
+                "report": topological_report(H)
+            })
 
     return H, log
 

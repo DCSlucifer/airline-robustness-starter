@@ -1,4 +1,9 @@
+"""
+Streamlit application for interactive airline network robustness analysis.
 
+Provides a web UI for exploring network metrics, running attack simulations,
+and testing defense strategies.
+"""
 # --- IMPORTS ---
 import streamlit as st
 import pandas as pd
@@ -7,11 +12,44 @@ import json
 import pydeck as pdk
 from pathlib import Path
 import sys
+import os
 
 # Ensure Python can find the project root directory (airline-robustness-starter)
 ROOT = Path(__file__).resolve().parents[2]  # Move up 2 levels from src/app/
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+# --- SECURITY: Path validation ---
+ALLOWED_DATA_DIR = (ROOT / "data").resolve()
+
+def sanitize_path(filename: str) -> Path:
+    """
+    Validates user-provided filename is within allowed data directory.
+
+    Prevents path traversal attacks (e.g., '../../../etc/passwd').
+
+    Args:
+        filename: User-provided filename (not full path).
+
+    Returns:
+        Resolved Path object within allowed directory.
+
+    Raises:
+        ValueError: If path escapes allowed directory.
+        FileNotFoundError: If file does not exist.
+    """
+    # Remove any path components - only allow filenames
+    clean_name = os.path.basename(filename)
+    resolved = (ALLOWED_DATA_DIR / clean_name).resolve()
+
+    # Verify it's within allowed directory
+    if not str(resolved).startswith(str(ALLOWED_DATA_DIR)):
+        raise ValueError(f"Access denied: '{filename}' is outside allowed directory")
+
+    if not resolved.exists():
+        raise FileNotFoundError(f"File not found: {clean_name}")
+
+    return resolved
 
 # Absolute imports (avoiding relative imports like '..')
 from src.data_io import load_airports, load_routes, merge_airports_routes
@@ -26,6 +64,7 @@ from src.attacks import (
     random_node_failures # Explicitly import this
 )
 from src.defenses import greedy_edge_addition
+from src.constants import MAX_DISPLAY_EDGES
 
 # --- STREAMLIT APP CONFIGURATION ---
 st.set_page_config(page_title="Airline Network Robustness", layout="wide")
@@ -35,14 +74,19 @@ st.title("✈️ Airline Network Robustness — Interactive Demo")
 # Sidebar for data loading
 with st.sidebar:
     st.header("Data Loading")
-    airports_path = st.text_input("Airports CSV", "data/airports.csv")
-    routes_path = st.text_input("Routes CSV", "data/routes.csv")
+    st.caption(f"Files must be in: {ALLOWED_DATA_DIR}")
+    airports_file = st.text_input("Airports CSV filename", "airports.csv")
+    routes_file = st.text_input("Routes CSV filename", "routes.csv")
 
     if st.button("Load graph"):
         try:
+            # Validate paths (security: prevent path traversal)
+            airports_path = sanitize_path(airports_file)
+            routes_path = sanitize_path(routes_file)
+
             # Load and process data
-            airports = load_airports(airports_path)
-            routes = load_routes(routes_path)
+            airports = load_airports(str(airports_path))
+            routes = load_routes(str(routes_path))
             airports, routes = merge_airports_routes(airports, routes)
 
             # Build the graph with distance weights
@@ -51,6 +95,10 @@ with st.sidebar:
             # Store the graph in the session state for persistence across reruns
             st.session_state["G"] = G
             st.success(f"Loaded graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges.")
+        except ValueError as e:
+            st.error(f"Security error: {e}")
+        except FileNotFoundError as e:
+            st.error(f"File error: {e}")
         except Exception as e:
             st.error(f"Error loading data: {e}")
 
@@ -88,9 +136,9 @@ def render_map(G: nx.DiGraph):
     # Limit edges for performance if needed.
     # Rendering too many arcs can slow down the browser significantly.
     edges_to_plot = list(G.edges())
-    if len(edges_to_plot) > 5000:
+    if len(edges_to_plot) > MAX_DISPLAY_EDGES:
         import random
-        edges_to_plot = random.sample(edges_to_plot, 5000)
+        edges_to_plot = random.sample(edges_to_plot, MAX_DISPLAY_EDGES)
 
     for u, v in edges_to_plot:
         if u in G.nodes and v in G.nodes:

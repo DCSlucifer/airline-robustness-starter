@@ -7,11 +7,20 @@ Shortest Path Length (ASPL), Diameter, and reachability within a specific
 number of hops.
 """
 from __future__ import annotations
+from typing import Any, Dict, Set, Tuple
+
 import networkx as nx
 import pandas as pd
-from typing import Dict, Tuple, Set
 
-def gwcc(G: nx.DiGraph) -> Set[any]:
+__all__ = [
+    "gwcc",
+    "gscc",
+    "aspl_and_diameter_on_gwcc",
+    "percent_od_within_hops",
+    "topological_report",
+]
+
+def gwcc(G: nx.DiGraph) -> Set[Any]:
     """
     Identifies the Giant Weakly Connected Component (GWCC) of the graph.
 
@@ -33,7 +42,7 @@ def gwcc(G: nx.DiGraph) -> Set[any]:
     # Return the largest one by node count
     return max(comps, key=len) if comps else set()
 
-def gscc(G: nx.DiGraph) -> Set[any]:
+def gscc(G: nx.DiGraph) -> Set[Any]:
     """
     Identifies the Giant Strongly Connected Component (GSCC) of the graph.
 
@@ -120,7 +129,7 @@ def percent_od_within_hops(G: nx.DiGraph, H: int = 4) -> float:
 
     return count / total
 
-def topological_report(G: nx.DiGraph, H: int = 4) -> Dict[str, any]:
+def topological_report(G: nx.DiGraph, H: int = 4) -> Dict[str, Any]:
     """
     Generates a comprehensive report of topological metrics for the graph.
 

@@ -6,9 +6,16 @@ strategic edges (redundancy) to connect communities or hardening critical nodes.
 """
 from __future__ import annotations
 from typing import List, Tuple, Dict, Iterable, Optional
+import warnings
 import itertools
 import networkx as nx
 import pandas as pd
+
+__all__ = [
+    "greedy_edge_addition",
+    "node_hardening_list",
+]
+
 from .metrics import topological_report
 from .geo import haversine_km
 
@@ -87,9 +94,9 @@ def greedy_edge_addition(
     Greedily adds edges to the graph to maximize robustness metrics.
 
     The algorithm iteratively adds the 'best' edge from a candidate set.
-    The 'best' edge is defined as the one that maximizes the Giant Weakly Connected
-    Component (GWCC) fraction. Ties are broken by minimizing the Average Shortest
-    Path Length (ASPL) within the GWCC.
+    Optimization: Uses a two-stage 'funnel' approach for speed:
+      1. Fast Filter: Score all candidates by simple heuristics (degree sum).
+      2. Accurate Check: Run expensive ASPL checks only on the top-k candidates.
 
     Args:
         G: The input directed graph.
@@ -102,14 +109,48 @@ def greedy_edge_addition(
     H = G.copy()
     log = []
 
+    # Input validation
+    if budget <= 0:
+        warnings.warn("budget must be positive, returning unchanged graph", UserWarning)
+        return H, log
+
+    if max_distance_km <= 0:
+        raise ValueError("max_distance_km must be positive")
+
+    if G.number_of_nodes() < 2:
+        warnings.warn("Graph has fewer than 2 nodes, cannot add edges", UserWarning)
+        return H, log
+
     for b in range(budget):
+        # --- STAGE 1: Fast Filter ---
+        # Generate candidates
+        candidates = _candidate_pairs(H, max_distance_km=max_distance_km)
+
+        # Heuristic scoring: Prefer connecting high-degree nodes (hubs)
+        # We use the undirected view for degree to capture overall importance
+        U = H.to_undirected()
+        scored_candidates = []
+
+        for u, v in candidates:
+            # Simple heuristic score: Sum of degrees
+            # Logic: Connecting two big hubs is likely to improve global flow
+            score = U.degree(u) + U.degree(v)
+            scored_candidates.append(((u, v), score))
+
+        # Sort by score descending and take top 5
+        scored_candidates.sort(key=lambda x: x[1], reverse=True)
+        top_candidates = [pair for pair, score in scored_candidates[:5]]
+
+        # --- STAGE 2: Accurate Check ---
         best_pair = None
         best_score = float("-inf")
         best_report = None
 
-        # Iterate through candidate pairs to find the optimal addition
-        # Note: This can be computationally expensive; the candidate set is limited by heuristics.
-        for (u, v) in _candidate_pairs(H, max_distance_km=max_distance_km):
+        # If no candidates found (rare), stop
+        if not top_candidates:
+            break
+
+        for (u, v) in top_candidates:
             # Temporarily add bidirectional edge u <-> v
             H.add_edge(u, v)
             H.add_edge(v, u)
@@ -140,11 +181,14 @@ def greedy_edge_addition(
         H.add_edge(u, v)
         H.add_edge(v, u)
 
-        rep_after = topological_report(H)
+        # Ensure we have a report for the final state if it wasn't the last checked
+        if best_report is None:
+             best_report = topological_report(H)
+
         log.append({
             "step": b + 1,
             "added_edges": [(u, v), (v, u)],
-            "report_after": rep_after
+            "report_after": best_report
         })
 
     return H, log
@@ -171,7 +215,8 @@ def node_hardening_list(G: nx.DiGraph, top_n: int = 10, metric: str = "betweenne
     elif metric == "pagerank":
         scores = nx.pagerank(G, alpha=0.85)
     else:
-        # Default to degree if unknown metric
-        scores = dict(G.degree())
+        raise ValueError(
+            f"Unknown metric: '{metric}'. Valid options: 'betweenness', 'degree', 'pagerank'"
+        )
 
     return [n for n, _ in sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:top_n]]

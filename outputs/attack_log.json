@@ -40,5 +40,33 @@
       "diameter_gwcc": 12,
       "pct_od_within_H": 0.7153563844737646
     }
+  },
+  {
+    "step": 4,
+    "removed_node": "IST",
+    "report": {
+      "n_nodes": 6069,
+      "n_edges": 35188,
+      "gwcc_frac": 0.5307299390344373,
+      "gscc_frac": 0.5239742956005932,
+      "n_components": 2829,
+      "aspl_gwcc": 4.0287328305510615,
+      "diameter_gwcc": 12,
+      "pct_od_within_H": 0.7097442829567608
+    }
+  },
+  {
+    "step": 5,
+    "removed_node": "ATL",
+    "report": {
+      "n_nodes": 6068,
+      "n_edges": 34761,
+      "gwcc_frac": 0.5288398154251813,
+      "gscc_frac": 0.5220830586684245,
+      "n_components": 2839,
+      "aspl_gwcc": 4.036218078984527,
+      "diameter_gwcc": 12,
+      "pct_od_within_H": 0.7074480361887429
+    }
   }
 ]

@@ -5,31 +5,11 @@ This module provides functions to build a NetworkX directed graph from airport
 and route data, including the calculation of edge weights (distances).
 """
 from __future__ import annotations
-import math
 import networkx as nx
 import pandas as pd
 from typing import Tuple, Optional
 
-def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """
-    Calculates the great-circle distance between two points on Earth.
-
-    Args:
-        lat1: Latitude of the first point.
-        lon1: Longitude of the first point.
-        lat2: Latitude of the second point.
-        lon2: Longitude of the second point.
-
-    Returns:
-        The distance in kilometers.
-    """
-    R = 6371.0  # Earth's radius in km
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-
-    a = math.sin(dphi/2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda/2)**2
-    return 2 * R * math.asin(math.sqrt(a))
+from .geo import haversine_km  # Import from geo.py to avoid DRY violation
 
 def build_digraph(airports: pd.DataFrame, routes: pd.DataFrame, add_distance: bool = True) -> nx.DiGraph:
     """
@@ -49,25 +29,29 @@ def build_digraph(airports: pd.DataFrame, routes: pd.DataFrame, add_distance: bo
     """
     G = nx.DiGraph()
 
-    # Add nodes with all available attributes from the airports DataFrame
-    for _, row in airports.iterrows():
-        G.add_node(row["iata"], **row.to_dict())
+    # Vectorized node addition (faster than iterrows)
+    # Drop duplicate IATA codes (keep first occurrence) to avoid index error
+    # This handles data quality issues where the same IATA appears multiple times
+    deduped_airports = airports.drop_duplicates(subset="iata", keep="first")
+    node_attrs = deduped_airports.set_index("iata").to_dict("index")
+    for iata, attrs in node_attrs.items():
+        G.add_node(iata, **attrs)
 
-    # Add edges (routes)
-    for _, row in routes.iterrows():
-        u, v = row["source_iata"], row["dest_iata"]
+    # Use itertuples for edges (3x faster than iterrows)
+    for row in routes.itertuples(index=False):
+        u, v = row.source_iata, row.dest_iata
 
         # Skip self-loops if any exist in the data
         if u == v:
             continue
 
-        attrs = row.to_dict()
+        attrs = row._asdict()
 
         # Calculate and add distance attribute if requested and coordinates are available
         if add_distance and u in G and v in G:
             a, b = G.nodes[u], G.nodes[v]
             # Ensure coordinates exist before calculation
-            if "lat" in a and "lon" in a and "lat" in b and "lon" in b:
+            if all(k in a and k in b for k in ("lat", "lon")):
                 attrs["distance_km"] = haversine_km(a["lat"], a["lon"], b["lat"], b["lon"])
 
         G.add_edge(u, v, **attrs)
