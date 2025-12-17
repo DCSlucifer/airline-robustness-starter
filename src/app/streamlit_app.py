@@ -20,6 +20,52 @@ if str(ROOT) not in sys.path:
 
 ALLOWED_DATA_DIR = (ROOT / "data").resolve()
 
+def apply_steps_to_graph(
+    G: nx.DiGraph,
+    attack_log: List[Dict],
+    attack_step: int,
+    defense_log: List[Dict],
+    defense_step: int,
+) -> nx.DiGraph:
+    H = G.copy()
+
+    # Apply removals up to attack_step
+    removed_nodes: Set[str] = set()
+    removed_edges: Set[Tuple[str, str]] = set()
+
+    for entry in attack_log[:attack_step]:
+        if not isinstance(entry, dict):
+            continue
+        if "removed_node" in entry and entry["removed_node"] is not None:
+            removed_nodes.add(entry["removed_node"])
+        if "removed_nodes" in entry and entry["removed_nodes"]:
+            removed_nodes.update(entry["removed_nodes"])
+        if "removed_edge" in entry and entry["removed_edge"]:
+            removed_edges.add(tuple(entry["removed_edge"]))
+        if "removed_edges" in entry and entry["removed_edges"]:
+            removed_edges.update(tuple(e) for e in entry["removed_edges"])
+
+    for n in removed_nodes:
+        if n in H:
+            H.remove_node(n)
+
+    for (u, v) in removed_edges:
+        if H.has_edge(u, v):
+            H.remove_edge(u, v)
+        elif H.has_edge(v, u):
+            H.remove_edge(v, u)
+
+    # Apply additions up to defense_step
+    for entry in defense_log[:defense_step]:
+        if not isinstance(entry, dict):
+            continue
+        if "added_edges" in entry and entry["added_edges"]:
+            for u, v in entry["added_edges"]:
+                if u in H and v in H:
+                    H.add_edge(u, v)
+
+    return H
+
 
 def sanitize_path(filename: str) -> Path:
     """Validates user-provided filename is within allowed data directory."""
@@ -147,7 +193,14 @@ with st.sidebar:
             routes = load_routes(str(sanitize_path(routes_file)))
             airports, routes = merge_airports_routes(airports, routes)
             G = build_digraph(airports, routes, add_distance=True)
-            st.session_state.update({"G": G, "baseline_report": topological_report(G), "attack_log": [], "defense_log": [], "hardened_nodes": set()})
+            st.session_state.update({
+        "G": G,
+        "baseline_report": topological_report(G, fast_mode=True),
+        "attack_log": [],
+        "defense_log": [],
+        "hardened_nodes": set()
+})
+
             st.success(f"{G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
         except Exception as e:
             st.error(str(e))
@@ -163,6 +216,12 @@ left, center, right = st.columns([1.2, 4, 1.2])
 # --- Left Panel ---
 with left:
     st.caption("VISUALIZATION")
+    fast_mode = st.checkbox(
+        "Fast mode (recommended for large graphs)",
+        value=(G.number_of_nodes() > 800),
+        key="fast_mode",
+    )
+
     top_n = st.slider("Top-N nodes", 5, 50, DEFAULT_TOP_N_HIGHLIGHTED, key="top_n")
     emphasis_metric = st.selectbox("Rank by", ["degree", "betweenness", "pagerank"], key="emph_metric")
     labels_emphasized = st.checkbox("Labels: emphasized only", True, key="labels_emph")
@@ -189,15 +248,21 @@ with left:
         with st.spinner("..."):
             try:
                 if attack_type == "targeted_nodes":
-                    H, log = targeted_node_removal(G, k=atk_k, metric=atk_metric, adaptive=True)
+                    H, log = targeted_node_removal(G, k=atk_k, metric=atk_metric, adaptive=True, fast_mode=fast_mode, report_every_n=max(1, atk_k // 20))
+
                 elif attack_type == "edge_betweenness":
-                    H, log = edge_betweenness_attack(G, m=atk_m, adaptive=True)
+                    H, log = edge_betweenness_attack(G, m=atk_m, adaptive=True, fast_mode=fast_mode, report_every_n=max(1, atk_m // 20), recompute_every=1)
+
                 elif attack_type == "geographic_radius":
                     H, info = geographic_attack_radius(G, (atk_lat, atk_lon), atk_rad)
+                    info["report"] = topological_report(H, fast_mode=fast_mode)
                     log = [info]
+
                 elif attack_type == "community_bridge":
                     H, info = community_bridge_attack(G, m=atk_m)
+                    info["report"] = topological_report(H, fast_mode=fast_mode)
                     log = [info]
+
                 st.session_state.update({"attack_log": log, "H_attack": H})
                 st.toast("Attack complete")
             except Exception as e:
@@ -211,7 +276,8 @@ with left:
     if st.button("Run Defense", use_container_width=True):
         with st.spinner("..."):
             try:
-                H, log = greedy_edge_addition(G, budget=def_budget, max_distance_km=float(def_dist))
+                H, log = greedy_edge_addition(G, budget=def_budget, max_distance_km=float(def_dist), fast_mode=fast_mode)
+
                 st.session_state.update({"defense_log": log, "H_defense": H})
                 st.toast("Defense complete")
             except Exception as e:
@@ -276,12 +342,12 @@ with center:
 
 # --- Right: Metrics ---
 with right:
-    current_G = st.session_state.get("H_attack") or st.session_state.get("H_defense") or G
-    if current_G is None or current_G.number_of_nodes() == 0:
-        current_G = G
+    # Build graph at the selected replay steps
+    current_step_G = apply_steps_to_graph(G, attack_log, attack_step, defense_log, defense_step)
 
-    report = topological_report(current_G)
-    baseline = st.session_state.get("baseline_report") or report
+    report = topological_report(current_step_G, fast_mode=fast_mode)
+    baseline = topological_report(G, fast_mode=fast_mode)
+
 
     def delta(k):
         if baseline and k in baseline and baseline[k] and baseline[k] != 0:
@@ -289,8 +355,24 @@ with right:
         return None
 
     st.caption("CONNECTIVITY")
-    st.markdown(metric_card("GWCC", report["gwcc_frac"], delta("gwcc_frac")), unsafe_allow_html=True)
-    st.markdown(metric_card("GSCC", report["gscc_frac"], delta("gscc_frac")), unsafe_allow_html=True)
+    st.markdown(
+    metric_card(
+        "GWCC",
+        f"{100 * report['gwcc_frac']:.3f}%<br><span style='font-size:13px;color:#9aa4b2'>{report['gwcc_n']}/{report['n_nodes']} nodes</span>",
+        delta("gwcc_frac"),
+    ),
+    unsafe_allow_html=True,
+    )
+
+    st.markdown(
+    metric_card(
+        "GSCC",
+        f"{100 * report['gscc_frac']:.3f}%<br><span style='font-size:13px;color:#9aa4b2'>{report['gscc_n']}/{report['n_nodes']} nodes</span>",
+        delta("gscc_frac"),
+    ),
+    unsafe_allow_html=True,
+    )
+
     st.markdown(metric_card("Components", report["n_components"]), unsafe_allow_html=True)
 
     st.caption("EFFICIENCY")

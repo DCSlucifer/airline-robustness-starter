@@ -232,23 +232,27 @@ def topological_report(G: nx.DiGraph, H: int = 4, fast_mode: bool = False) -> Di
         - diameter_gwcc: Diameter of the GWCC (0 if fast_mode).
         - pct_od_within_H: Percentage of pairs reachable within H hops (0 if fast_mode).
     """
+    gwcc_nodes = gwcc(G)
+    gscc_nodes = gscc(G)
     n = G.number_of_nodes()
-    gw = gwcc(G)
-    gs = gscc(G)
 
     if fast_mode:
-        # Skip expensive computations for interactive use
-        aspl, diam = float("inf"), 0
-        pctH = 0.0
+        # Approximate metrics for UI responsiveness on large graphs
+        aspl = aspl_sampled_on_gwcc(G, samples=200)
+        diam = diameter_two_sweep_on_gwcc(G, sweeps=4)
+        pctH = percent_od_within_hops_sampled(G, H=H, samples=200)
     else:
         aspl, diam = aspl_and_diameter_on_gwcc(G)
         pctH = percent_od_within_hops(G, H=H)
 
+
     return {
         "n_nodes": n,
         "n_edges": G.number_of_edges(),
-        "gwcc_frac": len(gw) / n if n else 0,
-        "gscc_frac": len(gs) / n if n else 0,
+        "gwcc_n": len(gwcc_nodes),
+        "gscc_n": len(gscc_nodes),
+        "gwcc_frac": len(gwcc_nodes) / n if n else 0,
+        "gscc_frac": len(gscc_nodes) / n if n else 0,
         "n_components": nx.number_weakly_connected_components(G),
         "aspl_gwcc": aspl,
         "diameter_gwcc": diam,

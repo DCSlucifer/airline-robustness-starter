@@ -88,8 +88,10 @@ def _candidate_pairs(
 def greedy_edge_addition(
     G: nx.DiGraph,
     budget: int = 5,
-    max_distance_km: float = 3000
+    max_distance_km: float = 3000,
+    fast_mode: bool = True,
 ) -> Tuple[nx.DiGraph, List[Dict]]:
+
     """
     Greedily adds edges to the graph to maximize robustness metrics.
 
@@ -155,7 +157,8 @@ def greedy_edge_addition(
             H.add_edge(u, v)
             H.add_edge(v, u)
 
-            rep = topological_report(H)
+            rep = topological_report(H, fast_mode=fast_mode)
+
 
             # Scoring function:
             # Primary objective: Maximize GWCC fraction (connectivity).
@@ -183,7 +186,8 @@ def greedy_edge_addition(
 
         # Ensure we have a report for the final state if it wasn't the last checked
         if best_report is None:
-             best_report = topological_report(H)
+             best_report = topological_report(H, fast_mode=fast_mode)
+
 
         log.append({
             "step": b + 1,
@@ -209,7 +213,13 @@ def node_hardening_list(G: nx.DiGraph, top_n: int = 10, metric: str = "betweenne
         A list of node IDs sorted by criticality.
     """
     if metric == "betweenness":
-        scores = nx.betweenness_centrality(G)
+        n = G.number_of_nodes()
+        if n > 500:
+            k = min(200, n)
+            scores = nx.betweenness_centrality(G, k=k, seed=42)
+        else:
+            scores = nx.betweenness_centrality(G)
+
     elif metric == "degree":
         scores = dict(G.degree())
     elif metric == "pagerank":

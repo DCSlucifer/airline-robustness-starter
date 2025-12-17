@@ -105,7 +105,13 @@ def compute_node_emphasis(
     if metric == "degree":
         scores = {n: G.in_degree(n) + G.out_degree(n) for n in G.nodes()}
     elif metric == "betweenness":
-        scores = nx.betweenness_centrality(G, normalized=True)
+        n_nodes = G.number_of_nodes()
+        if n_nodes > 500:
+            k = min(200, n_nodes)
+            scores = nx.betweenness_centrality(G, k=k, normalized=True, seed=42)
+        else:
+            scores = nx.betweenness_centrality(G, normalized=True)
+
     elif metric == "pagerank":
         scores = nx.pagerank(G, alpha=0.85)
     else:

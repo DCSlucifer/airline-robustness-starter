@@ -189,7 +189,8 @@ def targeted_node_removal(
 
     return H, log
 
-def random_node_failures(G: nx.DiGraph, k: int, R: int = 10, seed: int = 42) -> List[Dict]:
+def random_node_failures(G: nx.DiGraph, k: int, R: int = 10, seed: int = 42, fast_mode: bool = True) -> List[Dict]:
+
     """
     Simulates random node failures (errors) multiple times to estimate average impact.
 
@@ -231,83 +232,108 @@ def random_node_failures(G: nx.DiGraph, k: int, R: int = 10, seed: int = 42) -> 
         reports.append({
             "rep": r + 1,
             "removed_nodes": sample,
-            "report": topological_report(H)
+            "report": topological_report(H, fast_mode=fast_mode)
+
         })
 
     return reports
 
-def edge_betweenness_attack(G: nx.DiGraph, m: int, adaptive: bool = True) -> Tuple[nx.DiGraph, List[Dict]]:
+def edge_betweenness_attack(
+    G: nx.DiGraph,
+    m: int,
+    adaptive: bool = True,
+    fast_mode: bool = True,
+    report_every_n: int = 1,
+    k_samples: Optional[int] = None,
+    recompute_every: int = 1,
+) -> Tuple[nx.DiGraph, List[Dict]]:
     """
     Simulates an attack targeting edges with the highest betweenness centrality.
 
-    This attack often disconnects communities by removing "bridge" edges.
+    Improvements:
+      - Supports fast_mode reports.
+      - Uses approximate edge betweenness automatically on large graphs.
+      - Allows recompute_every to reduce adaptive recomputation cost.
 
     Args:
-        G: The input graph.
-        m: The number of edges to remove.
-        adaptive: If True, recomputes edge betweenness after each removal.
-                  If False, computes scores once at the beginning (faster but less accurate).
+        G: Input directed graph
+        m: edges to remove
+        adaptive: recompute betweenness as edges are removed
+        fast_mode: use sampled topological report
+        report_every_n: only compute/store report every N steps (1 = every step)
+        k_samples: override approximation sample size (None = auto)
+        recompute_every: in adaptive mode, recompute betweenness every N removals
 
     Returns:
-        A tuple containing the modified graph and the attack log.
+        (H, log)
     """
     H = G.copy()
-    log = []
+    log: List[Dict] = []
 
-    # Input validation
-    if m <= 0:
+    if m <= 0 or H.number_of_edges() == 0:
         return H, log
 
-    m = min(m, H.number_of_edges())  # Cap at available edges
+    m = min(m, H.number_of_edges())
 
+    def compute_scores() -> Dict[Tuple[Any, Any], float]:
+        U = H.to_undirected()
+        n = U.number_of_nodes()
+        # Auto-approx on large graphs
+        if k_samples is None and n > 500:
+            k = min(200, n)
+        else:
+            k = k_samples
+
+        if k is not None and k < n:
+            return nx.edge_betweenness_centrality(U, k=k, normalized=True, seed=42)
+
+        return nx.edge_betweenness_centrality(U, normalized=True)
+
+    # Non-adaptive: compute once
     if not adaptive:
-        # NON-ADAPTIVE MODE: Pre-compute edge betweenness ranking once
-        eb = nx.edge_betweenness_centrality(G.to_undirected())
-        if not eb:
-            return H, log
-
-        # Sort all edges by betweenness score descending
+        eb = compute_scores()
         ranked_edges = sorted(eb.items(), key=lambda kv: kv[1], reverse=True)
 
-        for step, (edge, _score) in enumerate(ranked_edges[:m]):
-            # Remove the edge from the directed graph (check both directions)
-            if H.has_edge(*edge):
-                H.remove_edge(*edge)
-            elif H.has_edge(edge[1], edge[0]):
-                H.remove_edge(edge[1], edge[0])
-            else:
-                # Edge already removed (can happen with undirected view)
-                continue
+        for step, (edge, _score) in enumerate(ranked_edges[:m], start=1):
+            u, v = edge
+            if H.has_edge(u, v):
+                H.remove_edge(u, v)
+            elif H.has_edge(v, u):
+                H.remove_edge(v, u)
 
-            log.append({
-                "step": step + 1,
-                "removed_edge": edge,
-                "report": topological_report(H)
-            })
-    else:
-        # ADAPTIVE MODE: Recompute edge betweenness after each removal
-        for step in range(m):
-            eb = nx.edge_betweenness_centrality(H.to_undirected())
+            entry = {"step": step, "removed_edge": (u, v), "report": None}
+            if step % max(1, report_every_n) == 0 or step == m:
+                entry["report"] = topological_report(H, fast_mode=fast_mode)
+            log.append(entry)
 
-            if not eb:
-                break
+        return H, log
 
-            # Find the edge with the maximum score
-            emax = max(eb, key=eb.get)
+    # Adaptive: recompute on schedule
+    eb = compute_scores()
+    for step in range(1, m + 1):
+        if not eb:
+            break
 
-            # Remove the edge from the directed graph (check both directions)
-            if H.has_edge(*emax):
-                H.remove_edge(*emax)
-            elif H.has_edge(emax[1], emax[0]):
-                H.remove_edge(emax[1], emax[0])
+        emax = max(eb, key=eb.get)
+        u, v = emax
 
-            log.append({
-                "step": step + 1,
-                "removed_edge": emax,
-                "report": topological_report(H)
-            })
+        if H.has_edge(u, v):
+            H.remove_edge(u, v)
+        elif H.has_edge(v, u):
+            H.remove_edge(v, u)
+
+        entry = {"step": step, "removed_edge": (u, v), "report": None}
+        if step % max(1, report_every_n) == 0 or step == m:
+            entry["report"] = topological_report(H, fast_mode=fast_mode)
+        log.append(entry)
+
+        if step % max(1, recompute_every) == 0:
+            eb = compute_scores()
+        else:
+            eb.pop(emax, None)
 
     return H, log
+
 
 def geographic_attack_radius(
     G: nx.DiGraph,
