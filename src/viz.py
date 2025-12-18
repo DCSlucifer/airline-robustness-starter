@@ -226,6 +226,7 @@ def build_edge_layer(
     Returns:
         List of PyDeck Layers (normal edges, attack edges, defense edges).
     """
+
     removed_edges = removed_edges or set()
     added_edges = added_edges or set()
 
@@ -233,40 +234,51 @@ def build_edge_layer(
     attack_arcs = []
     defense_arcs = []
 
-    all_edges = list(G.edges())
-    # Add removed edges back for visualization
-    all_edges.extend(removed_edges)
+    # 1) Always render special edges (removed/added) — never let sampling hide them
+    special_edges: List[Tuple[str, str]] = []
+    special_edges.extend(list(removed_edges))
+    special_edges.extend(list(added_edges))
 
-    # Sample if too many (with fixed seed for reproducibility)
-    if len(all_edges) > sample_limit:
+    # 2) Normal edges = edges currently in G but not special
+    normal_edges = [(u, v) for (u, v) in G.edges() if (u, v) not in removed_edges and (u, v) not in added_edges]
+
+    # 3) Sample only normal edges for performance
+    if len(normal_edges) > sample_limit:
         import random
-        rng = random.Random(42)  # Fixed seed for reproducible visualization
-        all_edges = rng.sample(all_edges, sample_limit)
+        rng = random.Random(42)
+        normal_edges = rng.sample(normal_edges, sample_limit)
 
-    for u, v in all_edges:
-        # Get coordinates
+    # Helper to build arc row
+    def _make_arc(u: str, v: str) -> Optional[Dict[str, Any]]:
         u_data = G.nodes.get(u, {})
         v_data = G.nodes.get(v, {})
-
         u_lat, u_lon = u_data.get("lat"), u_data.get("lon")
         v_lat, v_lon = v_data.get("lat"), v_data.get("lon")
-
         if None in (u_lat, u_lon, v_lat, v_lon):
-            continue
-
-        arc = {
+            return None
+        return {
             "source": [u_lon, u_lat],
             "target": [v_lon, v_lat],
             "source_iata": u,
             "dest_iata": v,
         }
 
+    # 4) Add special edges first (removed/added) so they always show up
+    for (u, v) in special_edges:
+        arc = _make_arc(u, v)
+        if arc is None:
+            continue
         if (u, v) in removed_edges:
             attack_arcs.append(arc)
         elif (u, v) in added_edges:
             defense_arcs.append(arc)
-        else:
-            normal_arcs.append(arc)
+
+    # 5) Add sampled normal edges
+    for (u, v) in normal_edges:
+        arc = _make_arc(u, v)
+        if arc is None:
+            continue
+        normal_arcs.append(arc)
 
     layers = []
 
@@ -298,7 +310,7 @@ def build_edge_layer(
             width_min_pixels=2,
         ))
 
-    # Defense edges (green, prominent - EXTRA thick for visibility)
+    # Defense edges (green, prominent)
     if defense_arcs:
         df_defense = pd.DataFrame(defense_arcs)
         layers.append(pdk.Layer(
@@ -308,7 +320,7 @@ def build_edge_layer(
             get_target_position="target",
             get_source_color=DEFENSE_EDGE_COLOR,
             get_target_color=DEFENSE_EDGE_COLOR,
-            get_width=6,  # Extra thick
+            get_width=6,
             width_min_pixels=4,
         ))
 

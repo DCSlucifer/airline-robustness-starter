@@ -172,14 +172,26 @@ def extract_defense_data(log: List[Dict], step: int) -> Set[Tuple[str, str]]:
     edges = set()
     for entry in log[:step]:
         if "added_edges" in entry:
-            edges.update(tuple(e) for e in entry["added_edges"])
+            for u, v in entry["added_edges"]:
+                a, b = (u, v) if u < v else (v, u)   # canonical undirected for display
+                edges.add((a, b))
     return edges
 
 
+
 # --- Session State ---
-for key, default in [("G", None), ("attack_log", []), ("defense_log", []), ("baseline_report", None), ("hardened_nodes", set())]:
+for key, default in [
+    ("G", None),                 # original loaded graph
+    ("G_base", None),            # scenario baseline (replay base)
+    ("attack_log", []),
+    ("defense_log", []),
+    ("baseline_report", None),
+    ("hardened_nodes", set()),
+    ("defense_base_attack_step", 0),
+]:
     if key not in st.session_state:
         st.session_state[key] = default
+
 
 # --- Sidebar: Data Loading ---
 with st.sidebar:
@@ -195,11 +207,16 @@ with st.sidebar:
             G = build_digraph(airports, routes, add_distance=True)
             st.session_state.update({
         "G": G,
+        "G_base": G,  # baseline của kịch bản hiện tại
         "baseline_report": topological_report(G, fast_mode=True),
         "attack_log": [],
         "defense_log": [],
-        "hardened_nodes": set()
-})
+        "hardened_nodes": set(),
+        "defense_base_attack_step": 0,
+        "atk_step": 0,
+        "def_step": 0,
+    })
+
 
             st.success(f"{G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
         except Exception as e:
@@ -209,6 +226,8 @@ G = st.session_state.get("G")
 if G is None:
     st.info("Open sidebar to load graph data.")
     st.stop()
+G_base = st.session_state.get("G_base") or G
+
 
 # --- Layout ---
 left, center, right = st.columns([1.2, 4, 1.2])
@@ -229,6 +248,8 @@ with left:
 
     st.caption("ATTACK")
     attack_type = st.selectbox("Type", ["targeted_nodes", "edge_betweenness", "geographic_radius", "community_bridge"], key="atk_type", label_visibility="collapsed")
+    chain_attack = st.checkbox("Chain attack from current replay state", value=False, key="chain_attack")
+
 
     if attack_type == "targeted_nodes":
         c1, c2 = st.columns(2)
@@ -247,11 +268,25 @@ with left:
     if st.button("Run Attack", type="primary", use_container_width=True):
         with st.spinner("..."):
             try:
+                # Base graph for this attack run
+                if chain_attack:
+                    # chain from what user is currently replaying
+                    G_attack_base = apply_steps_to_graph(
+                        G_base,
+                        st.session_state.get("attack_log", []),
+                        int(st.session_state.get("atk_step", 0)),
+                        st.session_state.get("defense_log", []),
+                        int(st.session_state.get("def_step", 0)),
+                    )
+                else:
+                    # fresh attack on scenario baseline
+                    G_attack_base = G_base
+
                 if attack_type == "targeted_nodes":
-                    H, log = targeted_node_removal(G, k=atk_k, metric=atk_metric, adaptive=True, fast_mode=fast_mode, report_every_n=max(1, atk_k // 20))
+                    H, log = targeted_node_removal(G_attack_base, k=atk_k, metric=atk_metric, adaptive=True, fast_mode=fast_mode, report_every_n=max(1, atk_k // 20))
 
                 elif attack_type == "edge_betweenness":
-                    H, log = edge_betweenness_attack(G, m=atk_m, adaptive=True, fast_mode=fast_mode, report_every_n=max(1, atk_m // 20), recompute_every=1)
+                    H, log = edge_betweenness_attack(G_attack_base, m=atk_m, adaptive=True, fast_mode=fast_mode, report_every_n=max(1, atk_m // 20), recompute_every=1)
 
                 elif attack_type == "geographic_radius":
                     H, info = geographic_attack_radius(G, (atk_lat, atk_lon), atk_rad)
@@ -263,7 +298,15 @@ with left:
                     info["report"] = topological_report(H, fast_mode=fast_mode)
                     log = [info]
 
-                st.session_state.update({"attack_log": log, "H_attack": H})
+                st.session_state.update({
+                "attack_log": log,
+                "H_attack": H,
+                "defense_log": [],                 # reset defense vì attack mới
+                "defense_base_attack_step": 0,
+                "def_step": 0,
+                "atk_step": len(log),
+            })
+
                 st.toast("Attack complete")
             except Exception as e:
                 st.error(str(e))
@@ -276,12 +319,52 @@ with left:
     if st.button("Run Defense", use_container_width=True):
         with st.spinner("..."):
             try:
-                H, log = greedy_edge_addition(G, budget=def_budget, max_distance_km=float(def_dist), fast_mode=fast_mode)
+                atk_step_for_def = int(st.session_state.get("atk_step", len(st.session_state.get("attack_log", []))))
+                attack_log_now = st.session_state.get("attack_log", [])
 
-                st.session_state.update({"defense_log": log, "H_defense": H})
-                st.toast("Defense complete")
+                G_base_now = st.session_state.get("G_base") or st.session_state.get("G")
+
+                # Defense MUST be computed on attacked graph at current attack step
+                G_for_defense = apply_steps_to_graph(G_base_now, attack_log_now, atk_step_for_def, [], 0)
+
+                H, log = greedy_edge_addition(
+                    G_for_defense,
+                    budget=def_budget,
+                    max_distance_km=float(def_dist),
+                    fast_mode=fast_mode
+                )
+
+                st.session_state.update({
+                    "defense_log": log,
+                    "H_defense": H,
+                    "defense_base_attack_step": atk_step_for_def,
+                    "def_step": len(log),
+                })
+
+                st.toast(f"Defense complete (based on attack step {atk_step_for_def})")
+
             except Exception as e:
                 st.error(str(e))
+
+    if st.button("Commit current state as new baseline", use_container_width=True):
+        attack_log_now = st.session_state.get("attack_log", [])
+        defense_log_now = st.session_state.get("defense_log", [])
+        atk_step_now = int(st.session_state.get("atk_step", 0))
+        def_step_now = int(st.session_state.get("def_step", 0))
+
+        G_base_now = st.session_state.get("G_base") or st.session_state.get("G")
+
+        committed = apply_steps_to_graph(G_base_now, attack_log_now, atk_step_now, defense_log_now, def_step_now)
+
+        st.session_state.update({
+            "G_base": committed,
+            "attack_log": [],
+            "defense_log": [],
+            "defense_base_attack_step": 0,
+            "atk_step": 0,
+            "def_step": 0,
+        })
+    st.toast("Committed. Baseline updated.")
 
 # --- Center: Map ---
 with center:
@@ -295,7 +378,11 @@ with center:
         defense_step = c2.slider("Defense step", 0, max(1, len(defense_log)), len(defense_log), key="def_step") if defense_log else 0
     else:
         attack_step, defense_step = 0, 0
-
+    base_step = int(st.session_state.get("defense_base_attack_step", 0))
+    if defense_log and attack_step < base_step:
+        defense_step = 0
+        st.session_state["def_step"] = 0
+        st.info(f"Defense was computed at attack step {base_step}. Set Attack step ≥ {base_step} to replay defense.")
     removed_nodes, removed_edges = extract_attack_data(attack_log, attack_step)
     added_edges = extract_defense_data(defense_log, defense_step)
     hardened = st.session_state.get("hardened_nodes", set())
@@ -309,10 +396,13 @@ with center:
         cluster_aggs = cluster_aggregates(G, clusters)
 
     # Node emphasis
-    emphasis = compute_node_emphasis(G, top_n, emphasis_metric, removed_nodes, hardened)
+    current_step_G = apply_steps_to_graph(G_base, attack_log, attack_step, defense_log, defense_step)
+    emphasis = compute_node_emphasis(current_step_G, top_n, emphasis_metric, removed_nodes, hardened)
+
 
     # Build layers
-    layers = build_edge_layer(G, removed_edges, added_edges)
+    layers = build_edge_layer(current_step_G, removed_edges, added_edges)
+
 
     if use_clusters and cluster_aggs:
         cl = build_cluster_layer(cluster_aggs)
@@ -325,7 +415,7 @@ with center:
         if nl:
             layers.append(nl)
     else:
-        nl, _ = build_node_layer(G, emphasis, labels_emphasized)
+        nl, _ = build_node_layer(current_step_G, emphasis, labels_emphasized)
         if nl:
             layers.append(nl)
 
@@ -343,10 +433,9 @@ with center:
 # --- Right: Metrics ---
 with right:
     # Build graph at the selected replay steps
-    current_step_G = apply_steps_to_graph(G, attack_log, attack_step, defense_log, defense_step)
-
+    current_step_G = apply_steps_to_graph(G_base, attack_log, attack_step, defense_log, defense_step)
     report = topological_report(current_step_G, fast_mode=fast_mode)
-    baseline = topological_report(G, fast_mode=fast_mode)
+    baseline = topological_report(G_base, fast_mode=fast_mode)
 
 
     def delta(k):
