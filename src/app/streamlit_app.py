@@ -90,7 +90,7 @@ from src.attacks import (
     random_node_failures,
 )
 from src.defenses import greedy_edge_addition, node_hardening_list
-from src.constants import DEFAULT_TOP_N_HIGHLIGHTED
+from src.constants import DEFAULT_TOP_N_HIGHLIGHTED, ATTACK_NODE_COLOR, NODE_SIZE_ATTACKED
 from src.clustering import (
     community_clustering,
     geographic_clustering,
@@ -176,6 +176,37 @@ def extract_defense_data(log: List[Dict], step: int) -> Set[Tuple[str, str]]:
                 a, b = (u, v) if u < v else (v, u)   # canonical undirected for display
                 edges.add((a, b))
     return edges
+
+def build_removed_nodes_layer(G_ref: nx.DiGraph, removed_nodes: Set[str]) -> Optional[pdk.Layer]:
+    rows = []
+    for n in removed_nodes:
+        if n not in G_ref:
+            continue
+        d = G_ref.nodes[n]
+        lat, lon = d.get("lat"), d.get("lon")
+        if lat is None or lon is None:
+            continue
+        rows.append({
+            "iata": n,
+            "name": d.get("name", n),
+            "lat": lat,
+            "lon": lon,
+        })
+
+    if not rows:
+        return None
+
+    df = pd.DataFrame(rows)
+    return pdk.Layer(
+        "ScatterplotLayer",
+        df,
+        get_position=["lon", "lat"],
+        get_color=ATTACK_NODE_COLOR,
+        get_radius=NODE_SIZE_ATTACKED,
+        pickable=True,
+        radius_min_pixels=3,
+        radius_max_pixels=18,
+    )
 
 
 
@@ -289,12 +320,12 @@ with left:
                     H, log = edge_betweenness_attack(G_attack_base, m=atk_m, adaptive=True, fast_mode=fast_mode, report_every_n=max(1, atk_m // 20), recompute_every=1)
 
                 elif attack_type == "geographic_radius":
-                    H, info = geographic_attack_radius(G, (atk_lat, atk_lon), atk_rad)
+                    H, info = geographic_attack_radius(G_attack_base, (atk_lat, atk_lon), atk_rad)
                     info["report"] = topological_report(H, fast_mode=fast_mode)
                     log = [info]
 
                 elif attack_type == "community_bridge":
-                    H, info = community_bridge_attack(G, m=atk_m)
+                    H, info = community_bridge_attack(G_attack_base, m=atk_m)
                     info["report"] = topological_report(H, fast_mode=fast_mode)
                     log = [info]
 
@@ -364,7 +395,8 @@ with left:
             "atk_step": 0,
             "def_step": 0,
         })
-    st.toast("Committed. Baseline updated.")
+        st.toast("Committed. Baseline updated.")
+
 
 # --- Center: Map ---
 with center:
@@ -375,14 +407,19 @@ with center:
     if attack_log or defense_log:
         c1, c2 = st.columns(2)
         attack_step = c1.slider("Attack step", 0, max(1, len(attack_log)), len(attack_log), key="atk_step") if attack_log else 0
+
+        base_step = int(st.session_state.get("defense_base_attack_step", 0))
+        defense_reset_needed = False
+        if defense_log and attack_step < base_step:
+            st.session_state["def_step"] = 0
+            defense_reset_needed = True
+
         defense_step = c2.slider("Defense step", 0, max(1, len(defense_log)), len(defense_log), key="def_step") if defense_log else 0
+
+        if defense_reset_needed:
+            st.info(f"Defense was computed at attack step {base_step}. Set Attack step ≥ {base_step} to replay defense.")
     else:
         attack_step, defense_step = 0, 0
-    base_step = int(st.session_state.get("defense_base_attack_step", 0))
-    if defense_log and attack_step < base_step:
-        defense_step = 0
-        st.session_state["def_step"] = 0
-        st.info(f"Defense was computed at attack step {base_step}. Set Attack step ≥ {base_step} to replay defense.")
     removed_nodes, removed_edges = extract_attack_data(attack_log, attack_step)
     added_edges = extract_defense_data(defense_log, defense_step)
     hardened = st.session_state.get("hardened_nodes", set())
@@ -408,8 +445,8 @@ with center:
         cl = build_cluster_layer(cluster_aggs)
         if cl:
             layers.append(cl)
-        unclustered = get_unclustered_nodes(G, clusters)
-        sub_G = G.subgraph(unclustered)
+        unclustered = get_unclustered_nodes(current_step_G, clusters)
+        sub_G = current_step_G.subgraph(unclustered)
         sub_emph = {n: emphasis.get(n, {}) for n in unclustered}
         nl, _ = build_node_layer(sub_G, sub_emph, labels_emphasized)
         if nl:
@@ -418,6 +455,10 @@ with center:
         nl, _ = build_node_layer(current_step_G, emphasis, labels_emphasized)
         if nl:
             layers.append(nl)
+    # Overlay removed nodes so targeted attacks are visible
+    removed_layer = build_removed_nodes_layer(G_base, removed_nodes)
+    if removed_layer:
+        layers.append(removed_layer)
 
     deck = pdk.Deck(
         layers=layers,
