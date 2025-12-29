@@ -10,4 +10,5 @@ folium>=0.15
 pyproj>=3.6
 # Streamlit app
 streamlit>=1.38
+pydeck>=0.9
 pyyaml>=6.0
