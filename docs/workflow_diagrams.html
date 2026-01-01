@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Airline Network Robustness - Workflow Diagrams</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #e8e8e8;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, #00d9ff, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #9aa4b2;
+            margin-bottom: 40px;
+            font-size: 1.1rem;
+        }
+        .diagram-section {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .diagram-section:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+        .diagram-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .diagram-title {
+            font-size: 1.5rem;
+            color: #00d9ff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .diagram-description {
+            color: #9aa4b2;
+            margin-bottom: 20px;
+            font-size: 0.95rem;
+        }
+        .mermaid {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 12px;
+            padding: 20px;
+            overflow-x: auto;
+        }
+        .badge {
+            background: linear-gradient(90deg, #7c3aed, #00d9ff);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .download-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        .download-btn {
+            background: linear-gradient(90deg, #00d9ff, #7c3aed);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        .download-btn:hover {
+            transform: scale(1.05);
+            opacity: 0.9;
+        }
+        .download-btn.svg-btn {
+            background: linear-gradient(90deg, #10b981, #059669);
+        }
+        .download-btn.png-btn {
+            background: linear-gradient(90deg, #f59e0b, #d97706);
+        }
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+        @media print {
+            body { background: white; color: black; }
+            .diagram-section { break-inside: avoid; border: 1px solid #ddd; }
+            .diagram-title { color: #1a1a2e; }
+            .download-buttons { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Airline Network Robustness</h1>
+        <p class="subtitle">Comprehensive Workflow Diagrams</p>
+
+        <!-- Diagram 1: System Architecture -->
+        <section class="diagram-section" id="section-1">
+            <div class="diagram-header">
+                <h2 class="diagram-title"><span class="badge">1</span> System Architecture Overview</h2>
+                <div class="download-buttons">
+                    <button class="download-btn svg-btn" onclick="downloadSVG(1, 'system_architecture')">Download SVG</button>
+                    <button class="download-btn png-btn" onclick="downloadPNG(1, 'system_architecture')">Download PNG</button>
+                </div>
+            </div>
+            <p class="diagram-description">High-level component relationships showing data, core engine, simulation, and visualization layers.</p>
+            <div class="mermaid" id="diagram-1">
+flowchart TB
+    subgraph DataLayer["Data Layer"]
+        CSV1[("airports.csv")]
+        CSV2[("routes.csv")]
+    end
+
+    subgraph CoreEngine["Core Engine"]
+        DataIO["data_io.py\nLoad & Validate"]
+        GraphBuild["graph_build.py\nBuild DiGraph"]
+        Metrics["metrics.py\nGWCC, GSCC, ASPL"]
+        Centrality["centrality.py\nNode Rankings"]
+        Geo["geo.py\nHaversine Distance"]
+    end
+
+    subgraph SimulationLayer["Simulation Layer"]
+        Attacks["attacks.py\n5 Attack Strategies"]
+        Defenses["defenses.py\n2 Defense Strategies"]
+    end
+
+    subgraph VisualizationLayer["Visualization Layer"]
+        Clustering["clustering.py\nCommunity / Geographic"]
+        Viz["viz.py\nPyDeck Layers"]
+        Streamlit["streamlit_app.py\nInteractive Dashboard"]
+    end
+
+    CSV1 --> DataIO
+    CSV2 --> DataIO
+    DataIO --> GraphBuild
+    GraphBuild --> Metrics
+    GraphBuild --> Attacks
+    GraphBuild --> Defenses
+    Centrality --> Attacks
+    Geo --> GraphBuild
+    Geo --> Defenses
+    Attacks --> Metrics
+    Defenses --> Metrics
+    Metrics --> Viz
+    Clustering --> Viz
+    Viz --> Streamlit
+    GraphBuild --> Streamlit
+            </div>
+        </section>
+
+        <!-- Diagram 2: Data Pipeline -->
+        <section class="diagram-section" id="section-2">
+            <div class="diagram-header">
+                <h2 class="diagram-title"><span class="badge">2</span> Data Pipeline Flow</h2>
+                <div class="download-buttons">
+                    <button class="download-btn svg-btn" onclick="downloadSVG(2, 'data_pipeline')">Download SVG</button>
+                    <button class="download-btn png-btn" onclick="downloadPNG(2, 'data_pipeline')">Download PNG</button>
+                </div>
+            </div>
+            <p class="diagram-description">Shows the transformation from CSV files to a NetworkX directed graph with 6,073 nodes and 37,041 edges.</p>
+            <div class="mermaid" id="diagram-2">
+flowchart LR
+    subgraph Input["CSV Files"]
+        A1["airports.csv\n6073 airports"]
+        R1["routes.csv\n37041 routes"]
+    end
+
+    subgraph Loading["data_io.py"]
+        LA["load_airports()\nValidate columns"]
+        LR["load_routes()\nValidate columns"]
+        M["merge_airports_routes()\nFilter dangling edges"]
+    end
+
+    subgraph Building["graph_build.py"]
+        BD["build_digraph()\nCreate nx.DiGraph"]
+        ND["Add Node Attrs\nlat, lon, city, country"]
+        ED["Add Edge Attrs\ndistance_km"]
+    end
+
+    subgraph Output["NetworkX Graph"]
+        G["nx.DiGraph\n6073 nodes\n37041 edges"]
+    end
+
+    A1 --> LA
+    R1 --> LR
+    LA --> M
+    LR --> M
+    M --> BD
+    BD --> ND
+    ND --> ED
+    ED --> G
+            </div>
+        </section>
+
+        <!-- Diagram 3: Attack Workflow -->
+        <section class="diagram-section" id="section-3">
+            <div class="diagram-header">
+                <h2 class="diagram-title"><span class="badge">3</span> Attack Simulation Workflow</h2>
+                <div class="download-buttons">
+                    <button class="download-btn svg-btn" onclick="downloadSVG(3, 'attack_workflow')">Download SVG</button>
+                    <button class="download-btn png-btn" onclick="downloadPNG(3, 'attack_workflow')">Download PNG</button>
+                </div>
+            </div>
+            <p class="diagram-description">How different attack strategies (targeted, random, edge, geographic, community) execute and produce attack logs.</p>
+            <div class="mermaid" id="diagram-3">
+flowchart TB
+    subgraph Input["Input"]
+        G["Original Graph G"]
+        Params["Attack Parameters\nk nodes, metric, adaptive"]
+    end
+
+    subgraph Strategy["Attack Strategy Selection"]
+        T["targeted_node_removal\nDegree/Betweenness/PageRank/CI"]
+        R["random_node_failures\nMonte Carlo R repetitions"]
+        E["edge_betweenness_attack\nRemove critical bridges"]
+        GEO["geographic_attack_radius\nlat, lon, radius_km"]
+        COM["community_bridge_attack\nInter-community edges"]
+    end
+
+    subgraph Execution["Execution Loop"]
+        Rank["Rank nodes by metric"]
+        Remove["Remove top-k nodes"]
+        Recompute["Recompute metrics\nif adaptive=True"]
+        Log["Log step: removed_node,\nreport_after"]
+    end
+
+    subgraph Output["Output"]
+        H["Modified Graph H"]
+        AttackLog["Attack Log\nList of step reports"]
+    end
+
+    G --> Strategy
+    Params --> Strategy
+    T --> Rank
+    R --> Remove
+    E --> Rank
+    GEO --> Remove
+    COM --> Rank
+    Rank --> Remove
+    Remove --> Recompute
+    Recompute -->|"repeat k times"| Rank
+    Remove --> Log
+    Log --> H
+    Log --> AttackLog
+            </div>
+        </section>
+
+        <!-- Diagram 4: Defense Workflow -->
+        <section class="diagram-section" id="section-4">
+            <div class="diagram-header">
+                <h2 class="diagram-title"><span class="badge">4</span> Defense Strategy Workflow</h2>
+                <div class="download-buttons">
+                    <button class="download-btn svg-btn" onclick="downloadSVG(4, 'defense_workflow')">Download SVG</button>
+                    <button class="download-btn png-btn" onclick="downloadPNG(4, 'defense_workflow')">Download PNG</button>
+                </div>
+            </div>
+            <p class="diagram-description">The greedy edge addition algorithm that identifies and adds strategic edges to reinforce network connectivity.</p>
+            <div class="mermaid" id="diagram-4">
+flowchart TB
+    subgraph Input["Input"]
+        G["Damaged Graph G"]
+        Budget["budget=5\nmax_distance_km=3000"]
+    end
+
+    subgraph Candidates["Candidate Generation"]
+        Comm["Detect communities\nLabel Propagation"]
+        TopN["Select top-N nodes\nper community"]
+        Filter["Filter by distance\nhaversine_km ≤ max"]
+        Pairs["Cross-community\ncandidate pairs"]
+    end
+
+    subgraph Greedy["Greedy Edge Addition"]
+        Score["Score candidates\ndegree_sum heuristic"]
+        Top5["Take top-5"]
+        Eval["Evaluate each:\nadd edge → compute GWCC"]
+        Best["Select best edge\nmaximize GWCC"]
+        Add["Add bidirectional edge"]
+    end
+
+    subgraph Output["Output"]
+        H["Reinforced Graph H"]
+        DefLog["Defense Log\nadded_edges, report_after"]
+    end
+
+    G --> Comm
+    Budget --> Filter
+    Comm --> TopN
+    TopN --> Filter
+    Filter --> Pairs
+    Pairs --> Score
+    Score --> Top5
+    Top5 --> Eval
+    Eval --> Best
+    Best --> Add
+    Add -->|"repeat budget times"| Score
+    Add --> H
+    Add --> DefLog
+            </div>
+        </section>
+
+        <!-- Diagram 5: Module Dependencies -->
+        <section class="diagram-section" id="section-5">
+            <div class="diagram-header">
+                <h2 class="diagram-title"><span class="badge">5</span> Module Dependency Diagram</h2>
+                <div class="download-buttons">
+                    <button class="download-btn svg-btn" onclick="downloadSVG(5, 'module_dependencies')">Download SVG</button>
+                    <button class="download-btn png-btn" onclick="downloadPNG(5, 'module_dependencies')">Download PNG</button>
+                </div>
+            </div>
+            <p class="diagram-description">Import relationships between source modules showing how components depend on each other.</p>
+            <div class="mermaid" id="diagram-5">
+graph TD
+    subgraph Core["Core Modules"]
+        GEO["geo.py"]
+        CONST["constants.py"]
+    end
+
+    subgraph Data["Data Layer"]
+        DIO["data_io.py"]
+        GB["graph_build.py"]
+    end
+
+    subgraph Analysis["Analysis Layer"]
+        CENT["centrality.py"]
+        MET["metrics.py"]
+    end
+
+    subgraph Simulation["Simulation Layer"]
+        ATK["attacks.py"]
+        DEF["defenses.py"]
+    end
+
+    subgraph Viz["Visualization Layer"]
+        CLU["clustering.py"]
+        VIZ["viz.py"]
+    end
+
+    subgraph App["Application"]
+        APP["streamlit_app.py"]
+    end
+
+    GEO --> GB
+    GEO --> DEF
+    CONST --> CLU
+    CONST --> VIZ
+    DIO --> APP
+    GB --> APP
+    MET --> ATK
+    MET --> DEF
+    MET --> APP
+    GEO --> ATK
+    CLU --> APP
+    VIZ --> APP
+    ATK --> APP
+    DEF --> APP
+            </div>
+        </section>
+
+        <footer>
+            <p>Generated for Airline Network Robustness Analysis Project</p>
+            <p>2026-01-01 | <a href="https://dcslucifer-airline-robustness-starte-srcappstreamlit-app-vhymx8.streamlit.app/" style="color: #00d9ff;">Live Demo</a></p>
+        </footer>
+    </div>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            }
+        });
+
+        // Download as SVG
+        function downloadSVG(diagramId, filename) {
+            const diagramDiv = document.getElementById('diagram-' + diagramId);
+            const svg = diagramDiv.querySelector('svg');
+            if (!svg) {
+                alert('Diagram not rendered yet. Please wait a moment and try again.');
+                return;
+            }
+
+            // Clone SVG and add white background for better visibility
+            const svgClone = svg.cloneNode(true);
+            svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+
+            // Add background rect
+            const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            bgRect.setAttribute('width', '100%');
+            bgRect.setAttribute('height', '100%');
+            bgRect.setAttribute('fill', '#1a1a2e');
+            svgClone.insertBefore(bgRect, svgClone.firstChild);
+
+            const svgData = new XMLSerializer().serializeToString(svgClone);
+            const blob = new Blob([svgData], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename + '.svg';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        // Download as PNG using html2canvas
+        function downloadPNG(diagramId, filename) {
+            const diagramDiv = document.getElementById('diagram-' + diagramId);
+            const svg = diagramDiv.querySelector('svg');
+            if (!svg) {
+                alert('Diagram not rendered yet. Please wait a moment and try again.');
+                return;
+            }
+
+            // Show loading state
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = 'Exporting...';
+            btn.disabled = true;
+
+            html2canvas(diagramDiv, {
+                backgroundColor: '#1a1a2e',
+                scale: 2,
+                useCORS: true,
+                allowTaint: true
+            }).then(function(canvas) {
+                const link = document.createElement('a');
+                link.download = filename + '.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+
+                // Reset button
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }).catch(function(err) {
+                alert('Export failed: ' + err.message);
+                btn.textContent = originalText;
+                btn.disabled = false;
+            });
+        }
+    </script>
+</body>
+</html>
