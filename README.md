@@ -1,5 +1,9 @@
 # Airline Network Robustness Analysis
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://dcslucifer-airline-robustness-starte-srcappstreamlit-app-vhymx8.streamlit.app/)
+
+> **Try it now:** [https://dcslucifer-airline-robustness-starte-srcappstreamlit-app-vhymx8.streamlit.app/](https://dcslucifer-airline-robustness-starte-srcappstreamlit-app-vhymx8.streamlit.app/)
+
 A graph-theoretic framework for simulating disruptions to global aviation networks and evaluating defensive strategies.
 
 ## Overview
