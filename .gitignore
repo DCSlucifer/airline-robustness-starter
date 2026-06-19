@@ -55,3 +55,6 @@ Thumbs.db
 # Project specific
 outputs/
 *.log
+
+# Subagent-driven development scratch
+.superpowers/
