@@ -40,3 +40,16 @@ def test_clamps_radius_to_positive(small_graph):
         "geographic_attack", {"lat": 40.0, "lon": -74.0, "radius_km": -5}, small_graph
     )
     assert out["radius_km"] >= 1.0
+
+
+def test_clamps_max_distance_to_floor(small_graph):
+    out = validate_and_clamp(
+        "defend", {"budget": 2, "max_distance_km": 10}, small_graph
+    )
+    assert out["max_distance_km"] == 100.0
+
+
+def test_does_not_mutate_caller_args(small_graph):
+    args = {"metric": "degree", "k": 9999}
+    validate_and_clamp("targeted_attack", args, small_graph)
+    assert args["k"] == 9999  # caller's dict is untouched

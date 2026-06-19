@@ -39,7 +39,13 @@ def validate_and_clamp(name: str, args: Dict[str, Any], G: nx.DiGraph) -> Dict[s
     if name not in TOOL_NAMES:
         raise GuardrailError(f"Tool '{name}' is not in the allowed tool list")
 
-    for key in _REQUIRED[name]:
+    required = _REQUIRED.get(name)
+    if required is None:
+        # A tool exists in TOOL_NAMES but has no argument policy here — fail safe
+        # rather than leak a KeyError.
+        raise GuardrailError(f"Tool '{name}' has no argument policy defined")
+
+    for key in required:
         if key not in args:
             raise GuardrailError(f"Missing required argument '{key}' for tool '{name}'")
 
