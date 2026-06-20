@@ -98,6 +98,9 @@ from src.clustering import (
     get_unclustered_nodes,
 )
 from src.viz import compute_node_emphasis, build_node_layer, build_edge_layer, build_cluster_layer
+from src.ai.orchestrator import run_whatif
+from src.ai.llm_client import ClaudeClient
+from src.ai.guardrails import GuardrailError
 
 
 # --- Caching ---
@@ -396,6 +399,34 @@ with left:
             "def_step": 0,
         })
         st.toast("Committed. Baseline updated.")
+
+    st.caption("ASK AI")
+    api_key = st.text_input("Anthropic API key", type="password", key="ai_key",
+                            help="Your key is used only for this session (BYOK).")
+    ai_query = st.text_input("Ask a what-if question", key="ai_query",
+                             placeholder="What if a storm hits the US East Coast?")
+    if st.button("Ask AI", use_container_width=True):
+        if not api_key:
+            st.warning("Enter an Anthropic API key to use the assistant.")
+        elif not ai_query:
+            st.warning("Type a question first.")
+        else:
+            with st.spinner("Thinking..."):
+                try:
+                    G_for_ai = st.session_state.get("G_base") or st.session_state.get("G")
+                    client = ClaudeClient(api_key=api_key)
+                    result = run_whatif(ai_query, G_for_ai, client)
+                    st.session_state["ai_result"] = result.model_dump()
+                except GuardrailError as e:
+                    st.error(f"Unsafe request: {e}")
+                except Exception as e:
+                    st.error(f"AI error: {e}")
+
+    ai_result = st.session_state.get("ai_result")
+    if ai_result:
+        st.markdown(f"**Tool:** `{ai_result['tool_name']}`  ")
+        st.caption(f"args: {ai_result['arguments']}")
+        st.write(ai_result["explanation"])
 
 
 # --- Center: Map ---
