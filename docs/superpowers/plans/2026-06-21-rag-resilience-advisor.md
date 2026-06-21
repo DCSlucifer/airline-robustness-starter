@@ -491,6 +491,7 @@ def _api_url(title: str) -> str:
     params = {
         "action": "query",
         "prop": "extracts|info",
+        "inprop": "lastrevid",  # required for the API to return lastrevid (pinned-revision citations)
         "explaintext": "1",
         "format": "json",
         "redirects": "1",
