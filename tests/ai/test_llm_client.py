@@ -66,3 +66,9 @@ def test_claude_client_parses_explanation_text():
     out = client.explain("q", "targeted_attack", {"baseline": {}, "after": {}})
     assert out == "Connectivity dropped 40%."
     assert client._client.messages.last_kwargs["model"] == "claude-sonnet-4-6"
+
+
+def test_claude_client_chat_returns_text():
+    response = _StubResponse([_StubBlock("text", text="Hello from chat.")])
+    client = ClaudeClient(_client=_StubAnthropic(response))
+    assert client.chat("sys", "user") == "Hello from chat."

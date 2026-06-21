@@ -20,19 +20,26 @@ class LLMClient(Protocol):
 
     def explain(self, query: str, tool_name: str, result: Dict[str, Any]) -> str: ...
 
+    def chat(self, system: str, user: str) -> str: ...
+
 
 class FakeLLMClient:
     """Deterministic client for offline tests; returns preset values."""
 
-    def __init__(self, selection: ToolSelection, explanation: str = "(no explanation)"):
+    def __init__(self, selection: ToolSelection, explanation: str = "(no explanation)",
+                 chat_response: str = "(chat)"):
         self._selection = selection
         self._explanation = explanation
+        self._chat_response = chat_response
 
     def select_tool(self, query: str, tools: List[Dict[str, Any]]) -> ToolSelection:
         return self._selection
 
     def explain(self, query: str, tool_name: str, result: Dict[str, Any]) -> str:
         return self._explanation
+
+    def chat(self, system: str, user: str) -> str:
+        return self._chat_response
 
 
 class ClaudeClient:
@@ -77,6 +84,15 @@ class ClaudeClient:
             max_tokens=1024,
             system=EXPLAINER_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": render_explain_prompt(query, tool_name, result)}],
+        )
+        return next(b.text for b in resp.content if b.type == "text")
+
+    def chat(self, system: str, user: str) -> str:
+        resp = self._client.messages.create(
+            model=self.explainer_model,
+            max_tokens=1024,
+            system=system,
+            messages=[{"role": "user", "content": user}],
         )
         return next(b.text for b in resp.content if b.type == "text")
 
@@ -140,6 +156,16 @@ class OpenAIClient:
             messages=[
                 {"role": "system", "content": EXPLAINER_SYSTEM_PROMPT},
                 {"role": "user", "content": render_explain_prompt(query, tool_name, result)},
+            ],
+        )
+        return resp.choices[0].message.content
+
+    def chat(self, system: str, user: str) -> str:
+        resp = self._client.chat.completions.create(
+            model=self.explainer_model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
             ],
         )
         return resp.choices[0].message.content

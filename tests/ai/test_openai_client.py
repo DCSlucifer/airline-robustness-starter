@@ -95,3 +95,9 @@ def test_openai_client_parses_explanation():
     out = client.explain("q", "targeted_attack", {"baseline": {}, "after": {}})
     assert out == "Connectivity dropped 40%."
     assert client._client.chat.completions.last_kwargs["model"] == "gpt-4o-mini"
+
+
+def test_openai_client_chat_returns_content():
+    response = _StubCompletion([_StubChoice(_StubMessage(content="Hello chat."))])
+    client = OpenAIClient(_client=_StubOpenAI(response))
+    assert client.chat("sys", "user") == "Hello chat."
