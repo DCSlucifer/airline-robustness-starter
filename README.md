@@ -19,6 +19,7 @@ Air transportation networks are critical infrastructure vulnerable to cascading 
 ## Table of Contents
 
 - [AI What-If Assistant (LLM)](#-ai-what-if-assistant-llm)
+- [Resilience Advisor (RAG)](#-resilience-advisor-rag)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Attack Models](#attack-models)
@@ -100,11 +101,57 @@ LLM_PROVIDER=anthropic python -m src.ai.eval.runner
 
 ### Tests
 
-The AI layer ships with 40 offline tests using a stubbed LLM — no API key or network required:
+The AI layer ships with offline tests using a stubbed LLM and embedder — no API key or network required:
 
 ```bash
 python -m pytest tests/ai -q
 ```
+
+## 📚 Resilience Advisor (RAG)
+
+A standalone Retrieval-Augmented Generation panel that answers questions about network robustness and aviation disruptions **with cited sources**, retrieved from a cached Wikipedia corpus. The answer is grounded in retrieved passages — citations link to the exact Wikipedia revision used.
+
+### How it works
+
+```mermaid
+flowchart LR
+    Q["Question"] --> E["Embed query<br/>(OpenAI)"]
+    E --> S["VectorStore<br/>cosine search"]
+    S -->|top-k chunks + sources| C["LLM chat<br/>(grounded answer)"]
+    C --> A["Answer + numbered<br/>source links"]
+    subgraph build["Build (offline, one-shot)"]
+        W["Wikipedia (revision-pinned)"] --> K["data/kb/*.md"] --> IX["index.npz"]
+    end
+    IX -. loaded at query time .-> S
+```
+
+| Module (`src/ai/rag/`) | Responsibility |
+|---|---|
+| `corpus.py` | Revision-pinned Wikipedia fetcher → cached `data/kb/*.md` (reproducible, stdlib only) |
+| `embedder.py` | `Embedder` interface + `FakeEmbedder` (tests) + `OpenAIEmbedder` (`text-embedding-3-small`) |
+| `chunker.py` / `store.py` | Paragraph chunker + numpy cosine `VectorStore` (persist/load) |
+| `index.py` | Build the index: load kb → chunk → embed → persist |
+| `advisor.py` | Retrieve top-k → grounded, citation-aligned answer |
+| `eval_rag.py` | Retrieval **recall@k** over a golden question set |
+
+### Engineering highlights
+
+- **Reproducible ingestion** — articles pinned by revision id; the cached corpus + prebuilt index are committed, so the index rebuilds offline and deterministically.
+- **Swappable backends** — embedder and vector store sit behind interfaces (numpy store today; FAISS is a drop-in swap).
+- **Grounded, aligned citations** — sources come only from retrieved chunks; inline `[n]` markers are numbered to match the rendered source list exactly.
+- **Resource-light deployment** — the deployed app loads a prebuilt index and embeds only the query (one small call), fitting Streamlit Cloud limits.
+- **Offline-tested** — `FakeEmbedder` + `FakeLLMClient` cover the whole pipeline; CI needs no key or network.
+
+### Build the index & evaluate (one-shot, needs an OpenAI key)
+
+```bash
+export OPENAI_API_KEY=sk-...        # PowerShell: $env:OPENAI_API_KEY="sk-..."
+python -m src.ai.rag.corpus         # cache data/kb/*.md (revision-pinned)
+python -m src.ai.rag.index          # build data/kb/index.npz
+python -m src.ai.rag.eval_rag       # prints retrieval recall@4
+```
+
+**Latest run:** retrieval `recall@4: __%` _(fill in after running)._ Then open the **Resilience Advisor** panel in the app and ask, e.g., *"What disrupted European air travel in 2010?"*
 
 ## Installation
 
