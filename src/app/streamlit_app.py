@@ -100,6 +100,10 @@ from src.clustering import (
 from src.viz import compute_node_emphasis, build_node_layer, build_edge_layer, build_cluster_layer
 from src.ai.orchestrator import run_whatif
 from src.ai.factory import make_client
+from src.ai.rag.advisor import answer as rag_answer
+from src.ai.rag.embedder import OpenAIEmbedder
+from src.ai.rag.store import VectorStore
+from src.ai.rag.index import INDEX_PATH
 from src.ai.guardrails import GuardrailError
 
 
@@ -428,6 +432,38 @@ with left:
         st.markdown(f"**Tool:** `{ai_result['tool_name']}`  ")
         st.caption(f"args: {ai_result['arguments']}")
         st.write(ai_result["explanation"])
+
+    st.caption("RESILIENCE ADVISOR (RAG)")
+    st.caption("Uses OpenAI for retrieval + answer. Enter an OpenAI key in the Ask AI panel.")
+    rag_q = st.text_input(
+        "Ask about resilience / disruptions",
+        key="rag_q",
+        placeholder="What disrupted European air travel in 2010?",
+    )
+    if st.button("Ask Advisor", use_container_width=True):
+        if not api_key:
+            st.warning("Enter an OpenAI API key in the Ask AI panel above.")
+        elif not rag_q:
+            st.warning("Type a question first.")
+        elif not INDEX_PATH.exists():
+            st.error("Knowledge index not built. Run: python -m src.ai.rag.index")
+        else:
+            with st.spinner("Retrieving..."):
+                try:
+                    store = VectorStore.load(INDEX_PATH)
+                    embedder = OpenAIEmbedder(api_key=api_key)
+                    res = rag_answer(rag_q, make_client("openai", api_key=api_key), embedder, store)
+                    st.session_state["rag_result"] = res.model_dump()
+                except Exception as e:
+                    st.error(f"Advisor error: {e}")
+
+    rag_result = st.session_state.get("rag_result")
+    if rag_result:
+        st.write(rag_result["answer"])
+        if rag_result["sources"]:
+            st.caption("Sources")
+            for i, s in enumerate(rag_result["sources"], start=1):
+                st.markdown(f"{i}. [{s['title']}]({s['url']})")
 
 
 # --- Center: Map ---
