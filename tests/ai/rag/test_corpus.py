@@ -1,6 +1,13 @@
 import json
 
-from src.ai.rag.corpus import fetch_corpus, parse_extract, Article
+from src.ai.rag.corpus import fetch_corpus, parse_extract, Article, _api_url
+
+
+def test_api_url_requests_lastrevid():
+    # The Action API only returns lastrevid when inprop=lastrevid is requested;
+    # without it, real builds get revid=None and citations lose their pinned oldid.
+    url = _api_url("Network science")
+    assert "inprop=lastrevid" in url
 
 
 def _api_json(title, text, revid):
