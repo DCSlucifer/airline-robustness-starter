@@ -47,5 +47,47 @@ def test_answer_empty_store_no_fabrication():
 
 
 def test_render_context_numbers_sources():
-    ctx = render_context([Hit(0.9, "txt", {"title": "T"})])
+    ctx = render_context([Hit(0.9, "txt", {"title": "T"})], [1])
     assert "[1]" in ctx and "T" in ctx
+
+
+class _RecordingClient:
+    """Captures the user message passed to chat so we can inspect the numbered context."""
+
+    def __init__(self, text="ans [1]"):
+        self.text = text
+        self.last_user = None
+
+    def select_tool(self, query, tools):  # pragma: no cover - unused by the advisor
+        raise NotImplementedError
+
+    def explain(self, query, tool_name, result):  # pragma: no cover - unused
+        return ""
+
+    def chat(self, system, user):
+        self.last_user = user
+        return self.text
+
+
+def test_citation_numbers_align_with_deduped_sources():
+    # Two chunks from article A and one from B -> deduped to 2 sources. The context the model sees
+    # must number A's chunks as [1] (shared) and B as [2] -- never [3], which would point past the
+    # 2-item source list the UI renders.
+    emb = FakeEmbedder(dim=16)
+    s = VectorStore()
+    s.add(
+        [
+            Chunk("a1", {"title": "A", "url": "ua"}),
+            Chunk("a2", {"title": "A", "url": "ua"}),
+            Chunk("b1", {"title": "B", "url": "ub"}),
+        ],
+        emb.embed(["a1", "a2", "b1"]),
+    )
+    client = _RecordingClient()
+    res = answer("q", client, emb, s, k=3)
+    assert len(res.sources) == 2
+    assert {src["title"] for src in res.sources} == {"A", "B"}
+    # 3 chunks but only 2 deduped sources -> context numbers are exactly {1, 2}, never 3.
+    assert "[1]" in client.last_user
+    assert "[2]" in client.last_user
+    assert "[3]" not in client.last_user

@@ -23,10 +23,15 @@ class RagAnswer(BaseModel):
     sources: List[Dict[str, Any]]
 
 
-def render_context(hits: List[Hit]) -> str:
-    """Number the retrieved chunks so the model can cite them as [1], [2], ..."""
+def render_context(hits: List[Hit], numbers: List[int]) -> str:
+    """Render each chunk prefixed by its SOURCE number so [n] aligns with the source list.
+
+    `numbers[i]` is the 1-based index (within the deduped source list) of `hits[i]`. Chunks from
+    the same article therefore share a number, keeping inline [n] markers in one-to-one
+    correspondence with the rendered sources.
+    """
     return "\n\n".join(
-        f"[{i}] ({h.source.get('title', '?')})\n{h.text}" for i, h in enumerate(hits, start=1)
+        f"[{num}] ({h.source.get('title', '?')})\n{h.text}" for num, h in zip(numbers, hits)
     )
 
 
@@ -52,6 +57,11 @@ def answer(
     hits = store.search(embedder.embed([question])[0], k=k)
     if not hits:
         return RagAnswer(question=question, answer="No relevant sources found.", sources=[])
-    user_msg = f"Question: {question}\n\nSources:\n{render_context(hits)}"
+    # Dedupe first, then number each hit by its source's index so the inline [n] markers the
+    # model emits line up exactly with the deduped source list the UI renders.
+    sources = _dedupe_sources(hits)
+    index_of = {(s["title"], s["url"]): i for i, s in enumerate(sources, start=1)}
+    numbers = [index_of[(h.source.get("title"), h.source.get("url"))] for h in hits]
+    user_msg = f"Question: {question}\n\nSources:\n{render_context(hits, numbers)}"
     text = client.chat(ADVISOR_SYSTEM_PROMPT, user_msg)
-    return RagAnswer(question=question, answer=text, sources=_dedupe_sources(hits))
+    return RagAnswer(question=question, answer=text, sources=sources)
