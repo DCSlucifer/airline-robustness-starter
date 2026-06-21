@@ -1,6 +1,7 @@
 # Airline Network Robustness Analysis
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://dcslucifer-airline-robustness-starte-srcappstreamlit-app-vhymx8.streamlit.app/)
+[![CI](https://github.com/DCSlucifer/airline-robustness-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/DCSlucifer/airline-robustness-starter/actions/workflows/ci.yml)
 > **Try it now:** [https://dcslucifer-airline-robustness-starte-srcappstreamlit-app-vhymx8.streamlit.app/](https://dcslucifer-airline-robustness-starte-srcappstreamlit-app-vhymx8.streamlit.app/)
 A graph-theoretic framework for simulating disruptions to global aviation networks and evaluating defensive strategies.
 
@@ -17,6 +18,7 @@ Air transportation networks are critical infrastructure vulnerable to cascading 
 
 ## Table of Contents
 
+- [AI What-If Assistant (LLM)](#-ai-what-if-assistant-llm)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Attack Models](#attack-models)
@@ -28,6 +30,81 @@ Air transportation networks are critical infrastructure vulnerable to cascading 
 - [CLI Usage](#cli-usage)
 - [Testing](#testing)
 - [References](#references)
+
+## 🤖 AI What-If Assistant (LLM)
+
+Ask the network questions in plain language — *"What happens if a storm hits the US East Coast?"* — and an LLM maps your question to the right simulation, runs it, and explains the result. **The LLM never invents numbers:** it only selects a tool and arguments; every metric comes from the real simulation engine (grounding / anti-hallucination).
+
+### Architecture
+
+```mermaid
+flowchart LR
+    U["User NL question"] --> R["Router LLM<br/>select_tool"]
+    R -->|ToolSelection| G["Guardrails<br/>validate &amp; clamp"]
+    G --> T["run_tool<br/>real simulation"]
+    T -->|grounded metrics| E["Explainer LLM"]
+    E --> A["Answer + map / metrics"]
+    subgraph swap["Provider-agnostic (OpenAI / Claude)"]
+        R
+        E
+    end
+```
+
+The assistant is an isolated `src/ai/` package layered on top of the existing simulation engine:
+
+| Module | Responsibility |
+|--------|----------------|
+| `tools.py` | LLM tool schemas mapped to the real attack/defense functions |
+| `schemas.py` | Pydantic models (structured outputs) |
+| `guardrails.py` | Validate & clamp every LLM-supplied argument before any simulation runs |
+| `llm_client.py` | Provider-swappable client: `OpenAIClient` (GPT-4o mini) + `ClaudeClient` behind one `LLMClient` interface |
+| `factory.py` | `make_client()` — pick provider via arg or `LLM_PROVIDER` env (default OpenAI) |
+| `orchestrator.py` | `run_whatif()` — route → guardrails → execute → explain |
+| `eval/` | Offline eval harness: golden set + tool-selection / argument accuracy |
+| `tracing.py` | JSONL per-turn observability (latency, tool, args) |
+
+### Engineering highlights
+
+- **Grounded tool use** — the LLM orchestrates; the simulation computes. No hallucinated metrics.
+- **Structured outputs + guardrails** — Pydantic models; arguments validated/clamped, tools whitelisted.
+- **Evaluation harness** — measures tool-selection & argument accuracy on a labeled golden set.
+- **Provider-agnostic** — swap OpenAI ↔ Claude with one config value; the eval runs on either.
+- **Observability** — every turn traced to JSONL for latency/cost analysis.
+
+### Run it
+
+The assistant uses **bring-your-own-key (BYOK)** — your API key is used only for the session.
+
+```bash
+python -m streamlit run src/app/streamlit_app.py
+# Open the "Ask AI" panel → pick a provider → paste your key → ask a question.
+```
+
+> _Screenshot placeholder — run the app, ask a question, and drop a screenshot at `docs/assets/ask-ai.png`, then embed it here._
+
+### Evaluate the router
+
+Measure how reliably the LLM picks the right tool and arguments on the golden set:
+
+```bash
+# OpenAI (default).  PowerShell: $env:OPENAI_API_KEY="sk-..."
+export OPENAI_API_KEY=sk-...
+python -m src.ai.eval.runner
+
+# or Claude
+export ANTHROPIC_API_KEY=...
+LLM_PROVIDER=anthropic python -m src.ai.eval.runner
+```
+
+**Latest run:** tool-selection accuracy `__%`, argument accuracy `__%` _(fill in after running with your own key)._
+
+### Tests
+
+The AI layer ships with 40 offline tests using a stubbed LLM — no API key or network required:
+
+```bash
+python -m pytest tests/ai -q
+```
 
 ## Installation
 

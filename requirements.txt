@@ -4,10 +4,11 @@ networkx>=3.2
 matplotlib>=3.8
 plotly>=5.23
 tqdm>=4.66
-# Optional (comment out if you do not need maps)
-geopandas>=0.14
-folium>=0.15
-pyproj>=3.6
+# Optional GIS extras — NOT imported by the codebase. Kept out of the default install so
+# CI and fresh setups don't need GDAL/system libraries. Uncomment only if you add GIS features.
+# geopandas>=0.14
+# folium>=0.15
+# pyproj>=3.6
 # Streamlit app
 streamlit>=1.38
 pydeck>=0.9
