@@ -1,5 +1,6 @@
 """Provider-swappable LLM client. Only ClaudeClient touches the network/SDK."""
 from __future__ import annotations
+import json
 from typing import Any, Dict, List, Optional, Protocol
 
 from .schemas import ToolSelection
@@ -9,7 +10,7 @@ from .prompts import (
     render_explain_prompt,
 )
 
-__all__ = ["LLMClient", "FakeLLMClient", "ClaudeClient"]
+__all__ = ["LLMClient", "FakeLLMClient", "ClaudeClient", "OpenAIClient"]
 
 
 class LLMClient(Protocol):
@@ -78,3 +79,67 @@ class ClaudeClient:
             messages=[{"role": "user", "content": render_explain_prompt(query, tool_name, result)}],
         )
         return next(b.text for b in resp.content if b.type == "text")
+
+
+def _to_openai_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Translate Anthropic-style TOOL_SPECS into OpenAI function-tool format."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+                "strict": True,
+            },
+        }
+        for t in tools
+    ]
+
+
+class OpenAIClient:
+    """OpenAI-backed client. The only module besides ClaudeClient that talks to a provider SDK.
+
+    `_client` is injectable for tests; in production it is constructed from the `openai` SDK using
+    OPENAI_API_KEY or an explicit api_key (BYOK).
+    """
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        router_model: str = "gpt-4o-mini",
+        explainer_model: str = "gpt-4o-mini",
+        _client: Any = None,
+    ):
+        self.router_model = router_model
+        self.explainer_model = explainer_model
+        if _client is not None:
+            self._client = _client
+        else:
+            import openai  # imported lazily so tests don't require the SDK
+            self._client = (
+                openai.OpenAI(api_key=api_key) if api_key else openai.OpenAI()
+            )
+
+    def select_tool(self, query: str, tools: List[Dict[str, Any]]) -> ToolSelection:
+        resp = self._client.chat.completions.create(
+            model=self.router_model,
+            messages=[
+                {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
+                {"role": "user", "content": query},
+            ],
+            tools=_to_openai_tools(tools),
+            tool_choice="required",
+        )
+        call = resp.choices[0].message.tool_calls[0]
+        return ToolSelection(name=call.function.name, arguments=json.loads(call.function.arguments))
+
+    def explain(self, query: str, tool_name: str, result: Dict[str, Any]) -> str:
+        resp = self._client.chat.completions.create(
+            model=self.explainer_model,
+            messages=[
+                {"role": "system", "content": EXPLAINER_SYSTEM_PROMPT},
+                {"role": "user", "content": render_explain_prompt(query, tool_name, result)},
+            ],
+        )
+        return resp.choices[0].message.content
