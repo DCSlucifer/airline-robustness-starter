@@ -99,7 +99,7 @@ from src.clustering import (
 )
 from src.viz import compute_node_emphasis, build_node_layer, build_edge_layer, build_cluster_layer
 from src.ai.orchestrator import run_whatif
-from src.ai.llm_client import ClaudeClient
+from src.ai.factory import make_client
 from src.ai.guardrails import GuardrailError
 
 
@@ -401,20 +401,21 @@ with left:
         st.toast("Committed. Baseline updated.")
 
     st.caption("ASK AI")
-    api_key = st.text_input("Anthropic API key", type="password", key="ai_key",
+    ai_provider = st.selectbox("Provider", ["openai", "anthropic"], key="ai_provider")
+    api_key = st.text_input("API key", type="password", key="ai_key",
                             help="Your key is used only for this session (BYOK).")
     ai_query = st.text_input("Ask a what-if question", key="ai_query",
                              placeholder="What if a storm hits the US East Coast?")
     if st.button("Ask AI", use_container_width=True):
         if not api_key:
-            st.warning("Enter an Anthropic API key to use the assistant.")
+            st.warning("Enter an API key to use the assistant.")
         elif not ai_query:
             st.warning("Type a question first.")
         else:
             with st.spinner("Thinking..."):
                 try:
                     G_for_ai = st.session_state.get("G_base") or st.session_state.get("G")
-                    client = ClaudeClient(api_key=api_key)
+                    client = make_client(ai_provider, api_key=api_key)
                     result = run_whatif(ai_query, G_for_ai, client)
                     st.session_state["ai_result"] = result.model_dump()
                 except GuardrailError as e:
