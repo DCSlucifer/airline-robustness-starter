@@ -1,6 +1,2 @@
--r requirements.txt
-
-# Keep local verification aligned with the GitHub Actions quality gates.
-pytest>=8.3,<10
-pytest-cov>=6,<8
-ruff>=0.15,<0.16
+# Install the project plus the tools used by local and CI verification.
+-e .[dev]

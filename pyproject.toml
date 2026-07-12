@@ -1,9 +1,54 @@
+[build-system]
+requires = ["setuptools>=77.0.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "airline-robustness"
 version = "0.1.0"
 requires-python = ">=3.10"
 description = "Graph-theoretic toolkit for analyzing airline network robustness"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "DATA_LICENSE.md"]
+authors = [{ name = "DCSlucifer" }]
+dependencies = [
+    "anthropic>=0.69",
+    "matplotlib>=3.8",
+    "networkx>=3.2",
+    "numpy>=1.26",
+    "openai>=1.0",
+    "pandas>=2.1",
+    "pydantic>=2",
+    "pydeck>=0.9",
+    "PyYAML>=6.0",
+    "streamlit>=1.38",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2,<2",
+    "pytest>=8.3,<10",
+    "pytest-cov>=6,<8",
+    "ruff>=0.15,<0.16",
+]
+
+[project.scripts]
+airline-robustness = "src.simulate:main"
+
+[project.urls]
+Homepage = "https://github.com/DCSlucifer/airline-robustness-starter"
+Repository = "https://github.com/DCSlucifer/airline-robustness-starter"
+
+[tool.setuptools]
+# The full OpenFlights datasets and user-editable config remain repository assets.
+# Installed CLI users can point --config at their own YAML file; --help is self-contained.
+include-package-data = false
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src", "src.*"]
+exclude = ["tests", "tests.*"]
+namespaces = false
 
 [tool.ruff]
 line-length = 100
