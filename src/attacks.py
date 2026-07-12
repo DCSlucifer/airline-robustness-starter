@@ -5,9 +5,11 @@ This module implements various strategies to simulate attacks on a network,
 including targeted node removal based on centrality metrics, random node failures,
 edge removal based on betweenness, and geographic attacks.
 """
+
 from __future__ import annotations
-from typing import Any, List, Tuple, Dict, Iterable, Optional, Set
+
 import warnings
+from typing import Any
 
 __all__ = [
     "collective_influence_scores",
@@ -18,12 +20,14 @@ __all__ = [
     "community_bridge_attack",
 ]
 import random
-import networkx as nx
-import pandas as pd
-from .metrics import topological_report
-from .geo import nodes_within_radius_km
 
-def collective_influence_scores(G: nx.Graph, l: int = 2) -> Dict[Any, float]:
+import networkx as nx
+
+from .geo import nodes_within_radius_km
+from .metrics import topological_report
+
+
+def collective_influence_scores(G: nx.Graph, l: int = 2) -> dict[Any, float]:  # noqa: E741
     """
     Calculates the Collective Influence (CI) score for each node in the graph.
 
@@ -33,7 +37,7 @@ def collective_influence_scores(G: nx.Graph, l: int = 2) -> Dict[Any, float]:
 
     Args:
         G: The input graph (will be converted to undirected for this calculation).
-        l: The radius of the ball (distance) to consider for influence. Defaults to 2.
+        l: The graph-distance radius to consider for influence. Defaults to 2.
 
     Returns:
         A dictionary mapping node IDs to their CI scores.
@@ -75,7 +79,8 @@ def collective_influence_scores(G: nx.Graph, l: int = 2) -> Dict[Any, float]:
 
     return scores
 
-def _rank_nodes(G: nx.DiGraph, metric: str = "degree", l_ci: int = 2) -> List[Any]:
+
+def _rank_nodes(G: nx.DiGraph, metric: str = "degree", l_ci: int = 2) -> list[Any]:
     """
     Ranks nodes in the graph based on a specified centrality metric.
 
@@ -107,6 +112,7 @@ def _rank_nodes(G: nx.DiGraph, metric: str = "degree", l_ci: int = 2) -> List[An
     # Sort nodes by score descending
     return [n for n, _ in sorted(scores.items(), key=lambda kv: kv[1], reverse=True)]
 
+
 def targeted_node_removal(
     G: nx.DiGraph,
     k: int,
@@ -115,7 +121,7 @@ def targeted_node_removal(
     l_ci: int = 2,
     fast_mode: bool = False,
     report_every_n: int = 1,
-) -> Tuple[nx.DiGraph, List[Dict]]:
+) -> tuple[nx.DiGraph, list[dict]]:
     """
     Simulates a targeted attack by removing `k` nodes based on a centrality metric.
 
@@ -139,16 +145,20 @@ def targeted_node_removal(
 
     # Input validation
     if k <= 0:
-        warnings.warn("k must be positive, returning unchanged graph", UserWarning)
+        warnings.warn("k must be positive, returning unchanged graph", UserWarning, stacklevel=2)
         return H, log
 
     n_nodes = G.number_of_nodes()
     if n_nodes == 0:
-        warnings.warn("Graph is empty, nothing to remove", UserWarning)
+        warnings.warn("Graph is empty, nothing to remove", UserWarning, stacklevel=2)
         return H, log
 
     if k > n_nodes:
-        warnings.warn(f"k={k} exceeds node count ({n_nodes}), capping at {n_nodes}", UserWarning)
+        warnings.warn(
+            f"k={k} exceeds node count ({n_nodes}), capping at {n_nodes}",
+            UserWarning,
+            stacklevel=2,
+        )
         k = n_nodes
 
     # Pre-calculate order if not adaptive
@@ -174,23 +184,23 @@ def targeted_node_removal(
 
         # Only compute expensive report every N steps or on final step
         if (step + 1) % report_every_n == 0 or step == k - 1:
-            log.append({
-                "step": step + 1,
-                "removed_node": node,
-                "report": topological_report(H, fast_mode=fast_mode)
-            })
+            log.append(
+                {
+                    "step": step + 1,
+                    "removed_node": node,
+                    "report": topological_report(H, fast_mode=fast_mode),
+                }
+            )
         else:
             # Lightweight log entry without full report
-            log.append({
-                "step": step + 1,
-                "removed_node": node,
-                "report": None
-            })
+            log.append({"step": step + 1, "removed_node": node, "report": None})
 
     return H, log
 
-def random_node_failures(G: nx.DiGraph, k: int, R: int = 10, seed: int = 42, fast_mode: bool = True) -> List[Dict]:
 
+def random_node_failures(
+    G: nx.DiGraph, k: int, R: int = 10, seed: int = 42, fast_mode: bool = True
+) -> list[dict]:
     """
     Simulates random node failures (errors) multiple times to estimate average impact.
 
@@ -205,20 +215,24 @@ def random_node_failures(G: nx.DiGraph, k: int, R: int = 10, seed: int = 42, fas
     """
     # Input validation
     if k <= 0:
-        warnings.warn("k must be positive, returning empty results", UserWarning)
+        warnings.warn("k must be positive, returning empty results", UserWarning, stacklevel=2)
         return []
 
     if R <= 0:
-        warnings.warn("R must be positive, returning empty results", UserWarning)
+        warnings.warn("R must be positive, returning empty results", UserWarning, stacklevel=2)
         return []
 
     nodes = list(G.nodes())
     if not nodes:
-        warnings.warn("Graph is empty, nothing to remove", UserWarning)
+        warnings.warn("Graph is empty, nothing to remove", UserWarning, stacklevel=2)
         return []
 
     if k > len(nodes):
-        warnings.warn(f"k={k} exceeds node count ({len(nodes)}), capping at {len(nodes)}", UserWarning)
+        warnings.warn(
+            f"k={k} exceeds node count ({len(nodes)}), capping at {len(nodes)}",
+            UserWarning,
+            stacklevel=2,
+        )
         k = len(nodes)
 
     random.seed(seed)
@@ -229,14 +243,16 @@ def random_node_failures(G: nx.DiGraph, k: int, R: int = 10, seed: int = 42, fas
         sample = random.sample(nodes, min(k, len(nodes)))
         H = G.copy()
         H.remove_nodes_from(sample)
-        reports.append({
-            "rep": r + 1,
-            "removed_nodes": sample,
-            "report": topological_report(H, fast_mode=fast_mode)
-
-        })
+        reports.append(
+            {
+                "rep": r + 1,
+                "removed_nodes": sample,
+                "report": topological_report(H, fast_mode=fast_mode),
+            }
+        )
 
     return reports
+
 
 def edge_betweenness_attack(
     G: nx.DiGraph,
@@ -244,9 +260,9 @@ def edge_betweenness_attack(
     adaptive: bool = True,
     fast_mode: bool = True,
     report_every_n: int = 1,
-    k_samples: Optional[int] = None,
+    k_samples: int | None = None,
     recompute_every: int = 1,
-) -> Tuple[nx.DiGraph, List[Dict]]:
+) -> tuple[nx.DiGraph, list[dict]]:
     """
     Simulates an attack targeting edges with the highest betweenness centrality.
 
@@ -268,14 +284,14 @@ def edge_betweenness_attack(
         (H, log)
     """
     H = G.copy()
-    log: List[Dict] = []
+    log: list[dict] = []
 
     if m <= 0 or H.number_of_edges() == 0:
         return H, log
 
     m = min(m, H.number_of_edges())
 
-    def compute_scores() -> Dict[Tuple[Any, Any], float]:
+    def compute_scores() -> dict[tuple[Any, Any], float]:
         U = H.to_undirected()
         n = U.number_of_nodes()
         # Auto-approx on large graphs
@@ -336,10 +352,8 @@ def edge_betweenness_attack(
 
 
 def geographic_attack_radius(
-    G: nx.DiGraph,
-    center: Tuple[float, float],
-    radius_km: float
-) -> Tuple[nx.DiGraph, Dict]:
+    G: nx.DiGraph, center: tuple[float, float], radius_km: float
+) -> tuple[nx.DiGraph, dict]:
     """
     Simulates a localized failure where all nodes within a geographic radius are removed.
 
@@ -356,7 +370,8 @@ def geographic_attack_radius(
     H.remove_nodes_from(victims)
     return H, {"removed_nodes": victims, "report": topological_report(H)}
 
-def community_bridge_attack(G: nx.DiGraph, m: int) -> Tuple[nx.DiGraph, Dict]:
+
+def community_bridge_attack(G: nx.DiGraph, m: int) -> tuple[nx.DiGraph, dict]:
     """
     Targets edges that connect different communities (bridges).
 
@@ -372,6 +387,7 @@ def community_bridge_attack(G: nx.DiGraph, m: int) -> Tuple[nx.DiGraph, Dict]:
     """
     # Use Label Propagation to detect communities on the undirected structure
     from networkx.algorithms.community import label_propagation_communities
+
     comms = list(label_propagation_communities(G.to_undirected()))
 
     # Map each node to its community ID
@@ -397,7 +413,7 @@ def community_bridge_attack(G: nx.DiGraph, m: int) -> Tuple[nx.DiGraph, Dict]:
     ranked = sorted(
         [e for e in inter_edges if e in eb or (e[::-1] in eb)],
         key=lambda e: eb.get(e, eb.get((e[1], e[0]), 0)),
-        reverse=True
+        reverse=True,
     )
 
     removed = ranked[:m]

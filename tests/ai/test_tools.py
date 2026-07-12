@@ -1,6 +1,4 @@
-import networkx as nx
-
-from src.ai.tools import TOOL_SPECS, TOOL_NAMES, run_tool
+from src.ai.tools import TOOL_NAMES, TOOL_SPECS, run_tool
 
 
 def test_tool_specs_are_well_formed():
@@ -38,5 +36,6 @@ def test_run_defend_adds_edges(small_graph):
 
 def test_run_tool_rejects_unknown_tool(small_graph):
     import pytest
+
     with pytest.raises(KeyError):
         run_tool("nonexistent", {}, small_graph)

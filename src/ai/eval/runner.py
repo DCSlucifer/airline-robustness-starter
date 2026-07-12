@@ -1,7 +1,9 @@
 """Offline evaluation harness: measures router tool-selection and argument accuracy."""
+
 from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 from ..llm_client import LLMClient
 from ..tools import TOOL_SPECS
@@ -21,7 +23,7 @@ class EvalCaseResult:
 
 @dataclass
 class EvalReport:
-    results: List[EvalCaseResult]
+    results: list[EvalCaseResult]
     tool_accuracy: float
     arg_accuracy: float
 
@@ -30,13 +32,13 @@ class EvalReport:
         return len(self.results)
 
 
-def _args_match(expected: Dict[str, Any], predicted: Dict[str, Any]) -> bool:
+def _args_match(expected: dict[str, Any], predicted: dict[str, Any]) -> bool:
     return all(predicted.get(k) == v for k, v in expected.items())
 
 
-def evaluate(client: LLMClient, dataset: List[Dict[str, Any]] = GOLDEN_SET) -> EvalReport:
+def evaluate(client: LLMClient, dataset: list[dict[str, Any]] = GOLDEN_SET) -> EvalReport:
     """Run the client's router over the dataset and score tool + argument accuracy."""
-    results: List[EvalCaseResult] = []
+    results: list[EvalCaseResult] = []
     for case in dataset:
         sel = client.select_tool(case["query"], TOOL_SPECS)
         tool_ok = sel.name == case["expected_tool"]
@@ -72,6 +74,7 @@ def format_report(report: EvalReport) -> str:
 
 def main() -> None:  # pragma: no cover - manual run, needs ANTHROPIC_API_KEY
     import os
+
     from ..llm_client import ClaudeClient
 
     client = ClaudeClient(api_key=os.environ.get("ANTHROPIC_API_KEY"))

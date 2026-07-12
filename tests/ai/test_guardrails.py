@@ -1,6 +1,6 @@
 import pytest
 
-from src.ai.guardrails import validate_and_clamp, GuardrailError
+from src.ai.guardrails import GuardrailError, validate_and_clamp
 
 
 def test_caps_k_at_node_count(small_graph):
@@ -14,9 +14,7 @@ def test_floors_k_at_one(small_graph):
 
 
 def test_caps_budget_at_ten(small_graph):
-    out = validate_and_clamp(
-        "defend", {"budget": 50, "max_distance_km": 3000}, small_graph
-    )
+    out = validate_and_clamp("defend", {"budget": 50, "max_distance_km": 3000}, small_graph)
     assert out["budget"] == 10
 
 
@@ -43,9 +41,7 @@ def test_clamps_radius_to_positive(small_graph):
 
 
 def test_clamps_max_distance_to_floor(small_graph):
-    out = validate_and_clamp(
-        "defend", {"budget": 2, "max_distance_km": 10}, small_graph
-    )
+    out = validate_and_clamp("defend", {"budget": 2, "max_distance_km": 10}, small_graph)
     assert out["max_distance_km"] == 100.0
 
 

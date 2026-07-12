@@ -5,32 +5,34 @@ This module provides basic plotting functions using Matplotlib for generating
 robustness curves and quick network visualizations. For interactive visualizations,
 refer to the Streamlit application.
 """
+
 from __future__ import annotations
-import os
-from typing import Dict, List, Set, Tuple, Any, Optional
+
+from typing import Any
+
 import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
 import pydeck as pdk
 
 from .constants import (
-    MAX_DISPLAY_EDGES,
-    NODE_SIZE_EMPHASIZED,
-    NODE_SIZE_DIMMED,
-    NODE_SIZE_ATTACKED,
-    NODE_OPACITY_EMPHASIZED,
-    NODE_OPACITY_DIMMED,
-    NORMAL_NODE_COLOR,
-    EMPHASIZED_NODE_COLOR,
-    ATTACK_NODE_COLOR,
     ATTACK_EDGE_COLOR,
-    DEFENSE_EDGE_COLOR,
-    HARDENED_NODE_COLOR,
+    ATTACK_NODE_COLOR,
     CLUSTER_NODE_COLOR,
+    DEFENSE_EDGE_COLOR,
+    EMPHASIZED_NODE_COLOR,
+    HARDENED_NODE_COLOR,
+    MAX_DISPLAY_EDGES,
+    NODE_OPACITY_DIMMED,
+    NODE_OPACITY_EMPHASIZED,
+    NODE_SIZE_ATTACKED,
+    NODE_SIZE_DIMMED,
+    NODE_SIZE_EMPHASIZED,
+    NORMAL_NODE_COLOR,
 )
 
 
-def plot_gwcc_curve(xs: List[int], ys: List[float], out_path: str):
+def plot_gwcc_curve(xs: list[int], ys: list[float], out_path: str):
     """
     Plots the robustness curve showing the degradation of the Giant Weakly Connected Component (GWCC).
 
@@ -78,13 +80,14 @@ def draw_map_quick(G: nx.DiGraph, out_path: str):
 # PyDeck Map Visualization Components
 # =============================================================================
 
+
 def compute_node_emphasis(
     G: nx.DiGraph,
     top_n: int,
     metric: str = "degree",
-    removed_nodes: Optional[Set[str]] = None,
-    hardened_nodes: Optional[Set[str]] = None,
-) -> Dict[str, Dict[str, Any]]:
+    removed_nodes: set[str] | None = None,
+    hardened_nodes: set[str] | None = None,
+) -> dict[str, dict[str, Any]]:
     """
     Computes visual emphasis properties for each node.
 
@@ -157,9 +160,9 @@ def compute_node_emphasis(
 
 def build_node_layer(
     G: nx.DiGraph,
-    emphasis: Dict[str, Dict[str, Any]],
+    emphasis: dict[str, dict[str, Any]],
     show_labels_only_emphasized: bool = True,
-) -> Tuple[pdk.Layer, pd.DataFrame]:
+) -> tuple[pdk.Layer, pd.DataFrame]:
     """
     Builds a PyDeck ScatterplotLayer with node emphasis.
 
@@ -177,19 +180,18 @@ def build_node_layer(
             continue
 
         node_emphasis = emphasis.get(node, {})
-        show_label = (
-            not show_labels_only_emphasized or
-            node_emphasis.get("is_emphasized", False)
-        )
+        show_label = not show_labels_only_emphasized or node_emphasis.get("is_emphasized", False)
 
-        nodes.append({
-            "iata": node,
-            "name": data.get("name", node) if show_label else "",
-            "lat": data["lat"],
-            "lon": data["lon"],
-            "size": node_emphasis.get("size", NODE_SIZE_DIMMED),
-            "color": node_emphasis.get("color", NORMAL_NODE_COLOR),
-        })
+        nodes.append(
+            {
+                "iata": node,
+                "name": data.get("name", node) if show_label else "",
+                "lat": data["lat"],
+                "lon": data["lon"],
+                "size": node_emphasis.get("size", NODE_SIZE_DIMMED),
+                "color": node_emphasis.get("color", NORMAL_NODE_COLOR),
+            }
+        )
 
     df = pd.DataFrame(nodes)
     if df.empty:
@@ -210,10 +212,10 @@ def build_node_layer(
 
 def build_edge_layer(
     G: nx.DiGraph,
-    removed_edges: Optional[Set[Tuple[str, str]]] = None,
-    added_edges: Optional[Set[Tuple[str, str]]] = None,
+    removed_edges: set[tuple[str, str]] | None = None,
+    added_edges: set[tuple[str, str]] | None = None,
     sample_limit: int = MAX_DISPLAY_EDGES,
-) -> List[pdk.Layer]:
+) -> list[pdk.Layer]:
     """
     Builds PyDeck ArcLayers for normal, removed, and added edges.
 
@@ -235,21 +237,24 @@ def build_edge_layer(
     defense_arcs = []
 
     # 1) Always render special edges (removed/added) — never let sampling hide them
-    special_edges: List[Tuple[str, str]] = []
+    special_edges: list[tuple[str, str]] = []
     special_edges.extend(list(removed_edges))
     special_edges.extend(list(added_edges))
 
     # 2) Normal edges = edges currently in G but not special
-    normal_edges = [(u, v) for (u, v) in G.edges() if (u, v) not in removed_edges and (u, v) not in added_edges]
+    normal_edges = [
+        (u, v) for (u, v) in G.edges() if (u, v) not in removed_edges and (u, v) not in added_edges
+    ]
 
     # 3) Sample only normal edges for performance
     if len(normal_edges) > sample_limit:
         import random
+
         rng = random.Random(42)
         normal_edges = rng.sample(normal_edges, sample_limit)
 
     # Helper to build arc row
-    def _make_arc(u: str, v: str) -> Optional[Dict[str, Any]]:
+    def _make_arc(u: str, v: str) -> dict[str, Any] | None:
         u_data = G.nodes.get(u, {})
         v_data = G.nodes.get(v, {})
         u_lat, u_lon = u_data.get("lat"), u_data.get("lon")
@@ -264,7 +269,7 @@ def build_edge_layer(
         }
 
     # 4) Add special edges first (removed/added) so they always show up
-    for (u, v) in special_edges:
+    for u, v in special_edges:
         arc = _make_arc(u, v)
         if arc is None:
             continue
@@ -274,7 +279,7 @@ def build_edge_layer(
             defense_arcs.append(arc)
 
     # 5) Add sampled normal edges
-    for (u, v) in normal_edges:
+    for u, v in normal_edges:
         arc = _make_arc(u, v)
         if arc is None:
             continue
@@ -285,51 +290,57 @@ def build_edge_layer(
     # Normal edges (subtle)
     if normal_arcs:
         df_normal = pd.DataFrame(normal_arcs)
-        layers.append(pdk.Layer(
-            "ArcLayer",
-            df_normal,
-            get_source_position="source",
-            get_target_position="target",
-            get_source_color=[80, 80, 120, 40],
-            get_target_color=[80, 80, 120, 40],
-            get_width=1,
-            width_min_pixels=1,
-        ))
+        layers.append(
+            pdk.Layer(
+                "ArcLayer",
+                df_normal,
+                get_source_position="source",
+                get_target_position="target",
+                get_source_color=[80, 80, 120, 40],
+                get_target_color=[80, 80, 120, 40],
+                get_width=1,
+                width_min_pixels=1,
+            )
+        )
 
     # Attack edges (red, prominent)
     if attack_arcs:
         df_attack = pd.DataFrame(attack_arcs)
-        layers.append(pdk.Layer(
-            "ArcLayer",
-            df_attack,
-            get_source_position="source",
-            get_target_position="target",
-            get_source_color=ATTACK_EDGE_COLOR,
-            get_target_color=ATTACK_EDGE_COLOR,
-            get_width=3,
-            width_min_pixels=2,
-        ))
+        layers.append(
+            pdk.Layer(
+                "ArcLayer",
+                df_attack,
+                get_source_position="source",
+                get_target_position="target",
+                get_source_color=ATTACK_EDGE_COLOR,
+                get_target_color=ATTACK_EDGE_COLOR,
+                get_width=3,
+                width_min_pixels=2,
+            )
+        )
 
     # Defense edges (green, prominent)
     if defense_arcs:
         df_defense = pd.DataFrame(defense_arcs)
-        layers.append(pdk.Layer(
-            "ArcLayer",
-            df_defense,
-            get_source_position="source",
-            get_target_position="target",
-            get_source_color=DEFENSE_EDGE_COLOR,
-            get_target_color=DEFENSE_EDGE_COLOR,
-            get_width=6,
-            width_min_pixels=4,
-        ))
+        layers.append(
+            pdk.Layer(
+                "ArcLayer",
+                df_defense,
+                get_source_position="source",
+                get_target_position="target",
+                get_source_color=DEFENSE_EDGE_COLOR,
+                get_target_color=DEFENSE_EDGE_COLOR,
+                get_width=6,
+                width_min_pixels=4,
+            )
+        )
 
     return layers
 
 
 def build_cluster_layer(
-    cluster_aggregates: List[Dict[str, Any]],
-) -> Optional[pdk.Layer]:
+    cluster_aggregates: list[dict[str, Any]],
+) -> pdk.Layer | None:
     """
     Builds a PyDeck layer for cluster super-nodes.
 
@@ -346,17 +357,20 @@ def build_cluster_layer(
     for agg in cluster_aggregates:
         # Scale size by total degree (log scale for better visualization)
         import math
+
         size = 50000 + 20000 * math.log1p(agg["total_degree"])
 
-        clusters.append({
-            "lat": agg["centroid_lat"],
-            "lon": agg["centroid_lon"],
-            "size": size,
-            "color": CLUSTER_NODE_COLOR,
-            "label": f"Cluster {agg['cluster_id']} ({agg['node_count']} nodes)",
-            "node_count": agg["node_count"],
-            "total_degree": agg["total_degree"],
-        })
+        clusters.append(
+            {
+                "lat": agg["centroid_lat"],
+                "lon": agg["centroid_lon"],
+                "size": size,
+                "color": CLUSTER_NODE_COLOR,
+                "label": f"Cluster {agg['cluster_id']} ({agg['node_count']} nodes)",
+                "node_count": agg["node_count"],
+                "total_degree": agg["total_degree"],
+            }
+        )
 
     df = pd.DataFrame(clusters)
     return pdk.Layer(
@@ -373,11 +387,11 @@ def build_cluster_layer(
 
 def render_interactive_map(
     G: nx.DiGraph,
-    emphasis: Dict[str, Dict[str, Any]],
+    emphasis: dict[str, dict[str, Any]],
     show_labels_only_emphasized: bool = True,
-    removed_edges: Optional[Set[Tuple[str, str]]] = None,
-    added_edges: Optional[Set[Tuple[str, str]]] = None,
-    cluster_aggregates: Optional[List[Dict[str, Any]]] = None,
+    removed_edges: set[tuple[str, str]] | None = None,
+    added_edges: set[tuple[str, str]] | None = None,
+    cluster_aggregates: list[dict[str, Any]] | None = None,
     use_clusters: bool = False,
 ) -> pdk.Deck:
     """
@@ -406,9 +420,6 @@ def render_interactive_map(
         cluster_layer = build_cluster_layer(cluster_aggregates)
         if cluster_layer:
             layers.append(cluster_layer)
-        # Also show unclustered individual nodes (small clusters)
-        from .clustering import get_unclustered_nodes
-        unclustered = set(get_unclustered_nodes(G, {}))  # Will handle in app
     else:
         node_layer, _ = build_node_layer(G, emphasis, show_labels_only_emphasized)
         if node_layer:
@@ -428,4 +439,3 @@ def render_interactive_map(
         tooltip={"text": "{iata}: {name}\n{label}"},
         map_style="mapbox://styles/mapbox/dark-v10",
     )
-

@@ -3,14 +3,17 @@
 `fetch_corpus` records each article's resolved revision id and writes plain-text extracts to
 `data/kb/`. The cached files are committed, so the index rebuilds offline and deterministically.
 """
+
 from __future__ import annotations
+
 import json
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 __all__ = ["Article", "WIKI_ARTICLES", "KB_DIR", "parse_extract", "fetch_corpus"]
 
@@ -23,7 +26,7 @@ class Article:
     title: str
 
 
-WIKI_ARTICLES: List[Article] = [
+WIKI_ARTICLES: list[Article] = [
     Article("Network science"),
     Article("Centrality"),
     Article("Betweenness centrality"),
@@ -59,7 +62,7 @@ def _slug(title: str) -> str:
     return title.lower().replace(" ", "-").replace("/", "-")
 
 
-def parse_extract(api_json: Dict[str, Any]) -> Dict[str, Any]:
+def parse_extract(api_json: dict[str, Any]) -> dict[str, Any]:
     """Pull title, plain text, pageid, revid from a Wikipedia Action API response."""
     page = next(iter(api_json["query"]["pages"].values()))
     return {
@@ -71,21 +74,20 @@ def parse_extract(api_json: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def fetch_corpus(
-    articles: Optional[List[Article]] = None,
+    articles: list[Article] | None = None,
     kb_dir: Path = KB_DIR,
     fetcher: Callable[[str], str] = _default_fetcher,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Fetch each article's plain-text extract, cache it to kb_dir, return manifest entries."""
     articles = articles if articles is not None else WIKI_ARTICLES
     kb_dir = Path(kb_dir)
     kb_dir.mkdir(parents=True, exist_ok=True)
-    manifest: List[Dict[str, Any]] = []
+    manifest: list[dict[str, Any]] = []
     for art in articles:
         parsed = parse_extract(json.loads(fetcher(_api_url(art.title))))
         revid = parsed["revid"]
-        url = (
-            "https://en.wikipedia.org/w/index.php?"
-            + urllib.parse.urlencode({"title": parsed["title"], "oldid": revid})
+        url = "https://en.wikipedia.org/w/index.php?" + urllib.parse.urlencode(
+            {"title": parsed["title"], "oldid": revid}
         )
         slug = _slug(parsed["title"])
         header = (

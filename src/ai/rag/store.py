@@ -1,9 +1,11 @@
 """In-memory vector store: numpy cosine similarity with persistence."""
+
 from __future__ import annotations
+
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -16,18 +18,18 @@ __all__ = ["Hit", "VectorStore"]
 class Hit:
     score: float
     text: str
-    source: Dict[str, Any]
+    source: dict[str, Any]
 
 
 class VectorStore:
     """Brute-force cosine search over chunk embeddings. Sufficient for a small corpus."""
 
     def __init__(self):
-        self._texts: List[str] = []
-        self._sources: List[Dict[str, Any]] = []
-        self._matrix: Optional[np.ndarray] = None  # (n, dim), L2-normalized
+        self._texts: list[str] = []
+        self._sources: list[dict[str, Any]] = []
+        self._matrix: np.ndarray | None = None  # (n, dim), L2-normalized
 
-    def add(self, chunks: List[Chunk], vectors: List[List[float]]) -> None:
+    def add(self, chunks: list[Chunk], vectors: list[list[float]]) -> None:
         if len(chunks) != len(vectors):
             raise ValueError("chunks and vectors length mismatch")
         if not chunks:
@@ -40,7 +42,7 @@ class VectorStore:
         self._texts.extend(c.text for c in chunks)
         self._sources.extend(dict(c.source) for c in chunks)
 
-    def search(self, query_vector: List[float], k: int = 4) -> List[Hit]:
+    def search(self, query_vector: list[float], k: int = 4) -> list[Hit]:
         if self._matrix is None or self._matrix.shape[0] == 0:
             return []
         q = np.asarray(query_vector, dtype=np.float32)
@@ -52,7 +54,7 @@ class VectorStore:
     def __len__(self) -> int:
         return 0 if self._matrix is None else int(self._matrix.shape[0])
 
-    def save(self, path: Union[str, Path]) -> None:
+    def save(self, path: str | Path) -> None:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         matrix = self._matrix if self._matrix is not None else np.zeros((0, 0), np.float32)
@@ -61,7 +63,7 @@ class VectorStore:
         path.with_suffix(".meta.json").write_text(json.dumps(meta), encoding="utf-8")
 
     @classmethod
-    def load(cls, path: Union[str, Path]) -> "VectorStore":
+    def load(cls, path: str | Path) -> VectorStore:
         path = Path(path)
         store = cls()
         matrix = np.load(str(path))["matrix"]

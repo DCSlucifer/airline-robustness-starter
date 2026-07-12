@@ -3,9 +3,11 @@ Unit tests for defense strategy functions.
 
 Tests cover greedy edge addition and node hardening with input validation.
 """
-import pytest
+
 import warnings
-import networkx as nx
+
+import pytest
+
 from src.defenses import greedy_edge_addition, node_hardening_list
 
 

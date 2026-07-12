@@ -1,4 +1,4 @@
-from src.ai.rag.chunker import chunk_document, Chunk
+from src.ai.rag.chunker import Chunk, chunk_document
 
 
 def test_chunk_preserves_source_metadata():

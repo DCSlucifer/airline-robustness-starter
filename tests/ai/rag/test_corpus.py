@@ -1,6 +1,6 @@
 import json
 
-from src.ai.rag.corpus import fetch_corpus, parse_extract, Article, _api_url
+from src.ai.rag.corpus import Article, _api_url, fetch_corpus, parse_extract
 
 
 def test_api_url_requests_lastrevid():
@@ -11,7 +11,11 @@ def test_api_url_requests_lastrevid():
 
 
 def _api_json(title, text, revid):
-    return {"query": {"pages": {"1": {"title": title, "extract": text, "pageid": 1, "lastrevid": revid}}}}
+    return {
+        "query": {
+            "pages": {"1": {"title": title, "extract": text, "pageid": 1, "lastrevid": revid}}
+        }
+    }
 
 
 def test_parse_extract_pulls_fields():

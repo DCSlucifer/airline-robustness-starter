@@ -4,25 +4,27 @@ The LLM selects a tool and arguments; ``run_tool`` executes the corresponding
 simulation on the graph and returns grounded metrics. The LLM never computes
 these numbers.
 """
+
 from __future__ import annotations
-from typing import Any, Dict, List
+
+from typing import Any
 
 import networkx as nx
 
-from ..metrics import topological_report
 from ..attacks import (
-    targeted_node_removal,
+    community_bridge_attack,
     edge_betweenness_attack,
     geographic_attack_radius,
-    community_bridge_attack,
+    targeted_node_removal,
 )
 from ..defenses import greedy_edge_addition
+from ..metrics import topological_report
 
 __all__ = ["TOOL_SPECS", "TOOL_NAMES", "run_tool"]
 
 _METRIC_ENUM = ["degree", "betweenness", "pagerank"]
 
-TOOL_SPECS: List[Dict[str, Any]] = [
+TOOL_SPECS: list[dict[str, Any]] = [
     {
         "name": "targeted_attack",
         "description": (
@@ -115,7 +117,7 @@ TOOL_SPECS: List[Dict[str, Any]] = [
 TOOL_NAMES = {spec["name"] for spec in TOOL_SPECS}
 
 
-def run_tool(name: str, args: Dict[str, Any], G: nx.DiGraph) -> Dict[str, Any]:
+def run_tool(name: str, args: dict[str, Any], G: nx.DiGraph) -> dict[str, Any]:
     """Execute the named simulation tool with validated args; return grounded metrics."""
     if name not in TOOL_NAMES:
         raise KeyError(f"Unknown tool: {name}")
@@ -134,9 +136,7 @@ def run_tool(name: str, args: Dict[str, Any], G: nx.DiGraph) -> Dict[str, Any]:
         }
 
     if name == "geographic_attack":
-        H, info = geographic_attack_radius(
-            G, (args["lat"], args["lon"]), args["radius_km"]
-        )
+        H, info = geographic_attack_radius(G, (args["lat"], args["lon"]), args["radius_km"])
         return {
             "baseline": baseline,
             "after": topological_report(H, fast_mode=True),

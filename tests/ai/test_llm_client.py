@@ -1,6 +1,6 @@
-from src.ai.schemas import ToolSelection
-from src.ai.llm_client import FakeLLMClient, ClaudeClient
+from src.ai.llm_client import ClaudeClient, FakeLLMClient
 from src.ai.prompts import render_explain_prompt
+from src.ai.schemas import ToolSelection
 
 
 def test_fake_client_returns_canned_selection_and_explanation():
@@ -50,8 +50,15 @@ class _StubAnthropic:
 
 
 def test_claude_client_parses_tool_use_block():
-    response = _StubResponse([_StubBlock("tool_use", name="geographic_attack",
-                                         input={"lat": 40.0, "lon": -74.0, "radius_km": 500})])
+    response = _StubResponse(
+        [
+            _StubBlock(
+                "tool_use",
+                name="geographic_attack",
+                input={"lat": 40.0, "lon": -74.0, "radius_km": 500},
+            )
+        ]
+    )
     client = ClaudeClient(_client=_StubAnthropic(response))
     sel = client.select_tool("storm near NYC", tools=[{"name": "geographic_attack"}])
     assert sel.name == "geographic_attack"

@@ -6,7 +6,11 @@ from src.ai.rag.store import VectorStore
 
 def _store():
     s = VectorStore()
-    chunks = [Chunk("alpha", {"title": "A"}), Chunk("beta", {"title": "B"}), Chunk("gamma", {"title": "C"})]
+    chunks = [
+        Chunk("alpha", {"title": "A"}),
+        Chunk("beta", {"title": "B"}),
+        Chunk("gamma", {"title": "C"}),
+    ]
     s.add(chunks, [[1.0, 0.0], [0.0, 1.0], [0.9, 0.1]])
     return s
 

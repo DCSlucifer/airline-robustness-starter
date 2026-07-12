@@ -3,9 +3,10 @@ Unit tests for clustering module.
 
 Tests cover community and geographic clustering algorithms.
 """
-import pytest
+
 import networkx as nx
-from src.clustering import community_clustering, geographic_clustering, cluster_aggregates
+
+from src.clustering import cluster_aggregates, community_clustering, geographic_clustering
 
 
 class TestCommunityClustering:

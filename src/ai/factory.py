@@ -1,9 +1,11 @@
 """Factory that selects an LLM provider from an explicit name or the LLM_PROVIDER env var."""
-from __future__ import annotations
-import os
-from typing import Any, Optional
 
-from .llm_client import LLMClient, ClaudeClient, OpenAIClient
+from __future__ import annotations
+
+import os
+from typing import Any
+
+from .llm_client import ClaudeClient, LLMClient, OpenAIClient
 
 __all__ = ["make_client", "DEFAULT_PROVIDER"]
 
@@ -11,8 +13,8 @@ DEFAULT_PROVIDER = "openai"
 
 
 def make_client(
-    provider: Optional[str] = None,
-    api_key: Optional[str] = None,
+    provider: str | None = None,
+    api_key: str | None = None,
     **kwargs: Any,
 ) -> LLMClient:
     """Return an LLMClient for the chosen provider.

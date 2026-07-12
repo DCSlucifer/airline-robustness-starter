@@ -1,6 +1,6 @@
-from src.ai.schemas import ToolSelection
-from src.ai.eval.runner import evaluate, format_report
 from src.ai.eval.golden_set import GOLDEN_SET
+from src.ai.eval.runner import evaluate, format_report
+from src.ai.schemas import ToolSelection
 
 
 class ScriptedClient:
@@ -56,6 +56,7 @@ def test_right_tool_wrong_args_counts_as_arg_miss():
 
 def test_golden_set_well_formed():
     from src.ai.tools import TOOL_NAMES
+
     assert len(GOLDEN_SET) >= 10
     for c in GOLDEN_SET:
         assert c["expected_tool"] in TOOL_NAMES

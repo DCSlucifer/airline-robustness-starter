@@ -1,14 +1,16 @@
 """Provider-swappable LLM client. Only ClaudeClient touches the network/SDK."""
-from __future__ import annotations
-import json
-from typing import Any, Dict, List, Optional, Protocol
 
-from .schemas import ToolSelection
+from __future__ import annotations
+
+import json
+from typing import Any, Protocol
+
 from .prompts import (
-    ROUTER_SYSTEM_PROMPT,
     EXPLAINER_SYSTEM_PROMPT,
+    ROUTER_SYSTEM_PROMPT,
     render_explain_prompt,
 )
+from .schemas import ToolSelection
 
 __all__ = ["LLMClient", "FakeLLMClient", "ClaudeClient", "OpenAIClient"]
 
@@ -16,9 +18,9 @@ __all__ = ["LLMClient", "FakeLLMClient", "ClaudeClient", "OpenAIClient"]
 class LLMClient(Protocol):
     """The orchestrator depends only on this interface, never on a provider SDK."""
 
-    def select_tool(self, query: str, tools: List[Dict[str, Any]]) -> ToolSelection: ...
+    def select_tool(self, query: str, tools: list[dict[str, Any]]) -> ToolSelection: ...
 
-    def explain(self, query: str, tool_name: str, result: Dict[str, Any]) -> str: ...
+    def explain(self, query: str, tool_name: str, result: dict[str, Any]) -> str: ...
 
     def chat(self, system: str, user: str) -> str: ...
 
@@ -26,16 +28,20 @@ class LLMClient(Protocol):
 class FakeLLMClient:
     """Deterministic client for offline tests; returns preset values."""
 
-    def __init__(self, selection: ToolSelection, explanation: str = "(no explanation)",
-                 chat_response: str = "(chat)"):
+    def __init__(
+        self,
+        selection: ToolSelection,
+        explanation: str = "(no explanation)",
+        chat_response: str = "(chat)",
+    ):
         self._selection = selection
         self._explanation = explanation
         self._chat_response = chat_response
 
-    def select_tool(self, query: str, tools: List[Dict[str, Any]]) -> ToolSelection:
+    def select_tool(self, query: str, tools: list[dict[str, Any]]) -> ToolSelection:
         return self._selection
 
-    def explain(self, query: str, tool_name: str, result: Dict[str, Any]) -> str:
+    def explain(self, query: str, tool_name: str, result: dict[str, Any]) -> str:
         return self._explanation
 
     def chat(self, system: str, user: str) -> str:
@@ -51,7 +57,7 @@ class ClaudeClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         router_model: str = "claude-haiku-4-5",
         explainer_model: str = "claude-sonnet-4-6",
         _client: Any = None,
@@ -62,11 +68,12 @@ class ClaudeClient:
             self._client = _client
         else:
             import anthropic  # imported lazily so tests don't require the SDK
+
             self._client = (
                 anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
             )
 
-    def select_tool(self, query: str, tools: List[Dict[str, Any]]) -> ToolSelection:
+    def select_tool(self, query: str, tools: list[dict[str, Any]]) -> ToolSelection:
         resp = self._client.messages.create(
             model=self.router_model,
             max_tokens=1024,
@@ -78,7 +85,7 @@ class ClaudeClient:
         block = next(b for b in resp.content if b.type == "tool_use")
         return ToolSelection(name=block.name, arguments=dict(block.input))
 
-    def explain(self, query: str, tool_name: str, result: Dict[str, Any]) -> str:
+    def explain(self, query: str, tool_name: str, result: dict[str, Any]) -> str:
         resp = self._client.messages.create(
             model=self.explainer_model,
             max_tokens=1024,
@@ -97,7 +104,7 @@ class ClaudeClient:
         return next(b.text for b in resp.content if b.type == "text")
 
 
-def _to_openai_tools(tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _to_openai_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Translate Anthropic-style TOOL_SPECS into OpenAI function-tool format."""
     return [
         {
@@ -122,7 +129,7 @@ class OpenAIClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         router_model: str = "gpt-4o-mini",
         explainer_model: str = "gpt-4o-mini",
         _client: Any = None,
@@ -133,11 +140,10 @@ class OpenAIClient:
             self._client = _client
         else:
             import openai  # imported lazily so tests don't require the SDK
-            self._client = (
-                openai.OpenAI(api_key=api_key) if api_key else openai.OpenAI()
-            )
 
-    def select_tool(self, query: str, tools: List[Dict[str, Any]]) -> ToolSelection:
+            self._client = openai.OpenAI(api_key=api_key) if api_key else openai.OpenAI()
+
+    def select_tool(self, query: str, tools: list[dict[str, Any]]) -> ToolSelection:
         resp = self._client.chat.completions.create(
             model=self.router_model,
             messages=[
@@ -150,7 +156,7 @@ class OpenAIClient:
         call = resp.choices[0].message.tool_calls[0]
         return ToolSelection(name=call.function.name, arguments=json.loads(call.function.arguments))
 
-    def explain(self, query: str, tool_name: str, result: Dict[str, Any]) -> str:
+    def explain(self, query: str, tool_name: str, result: dict[str, Any]) -> str:
         resp = self._client.chat.completions.create(
             model=self.explainer_model,
             messages=[

@@ -4,15 +4,17 @@ Node clustering utilities for network visualization.
 Provides community-based and geographic clustering to aggregate minor nodes
 into super-nodes for improved visual hierarchy and performance.
 """
+
 from __future__ import annotations
-from typing import Dict, List, Tuple, Any
+
+from typing import Any
+
 import networkx as nx
-from functools import lru_cache
 
 from .constants import CLUSTER_GRID_SIZE_DEG, MIN_CLUSTER_SIZE
 
 
-def community_clustering(G: nx.DiGraph) -> Dict[str, int]:
+def community_clustering(G: nx.DiGraph) -> dict[str, int]:
     """
     Clusters nodes using label propagation community detection.
 
@@ -40,9 +42,8 @@ def community_clustering(G: nx.DiGraph) -> Dict[str, int]:
 
 
 def geographic_clustering(
-    G: nx.DiGraph,
-    grid_size_deg: float = CLUSTER_GRID_SIZE_DEG
-) -> Dict[str, int]:
+    G: nx.DiGraph, grid_size_deg: float = CLUSTER_GRID_SIZE_DEG
+) -> dict[str, int]:
     """
     Clusters nodes by geographic grid cells (no external dependencies).
 
@@ -84,10 +85,7 @@ def geographic_clustering(
     return node_to_cluster
 
 
-def cluster_aggregates(
-    G: nx.DiGraph,
-    clusters: Dict[str, int]
-) -> List[Dict[str, Any]]:
+def cluster_aggregates(G: nx.DiGraph, clusters: dict[str, int]) -> list[dict[str, Any]]:
     """
     Computes aggregate statistics for each cluster (super-node data).
 
@@ -103,7 +101,7 @@ def cluster_aggregates(
         return []
 
     # Group nodes by cluster
-    cluster_nodes: Dict[int, List[str]] = {}
+    cluster_nodes: dict[int, list[str]] = {}
     for node, cluster_id in clusters.items():
         if cluster_id not in cluster_nodes:
             cluster_nodes[cluster_id] = []
@@ -132,22 +130,21 @@ def cluster_aggregates(
         centroid_lat = sum(lats) / len(lats) if lats else 0.0
         centroid_lon = sum(lons) / len(lons) if lons else 0.0
 
-        aggregates.append({
-            "cluster_id": cluster_id,
-            "centroid_lat": centroid_lat,
-            "centroid_lon": centroid_lon,
-            "total_degree": total_degree,
-            "node_count": len(nodes),
-            "member_nodes": nodes,
-        })
+        aggregates.append(
+            {
+                "cluster_id": cluster_id,
+                "centroid_lat": centroid_lat,
+                "centroid_lon": centroid_lon,
+                "total_degree": total_degree,
+                "node_count": len(nodes),
+                "member_nodes": nodes,
+            }
+        )
 
     return aggregates
 
 
-def get_unclustered_nodes(
-    G: nx.DiGraph,
-    clusters: Dict[str, int]
-) -> List[str]:
+def get_unclustered_nodes(G: nx.DiGraph, clusters: dict[str, int]) -> list[str]:
     """
     Returns nodes that are not part of any significant cluster.
 
@@ -164,7 +161,7 @@ def get_unclustered_nodes(
         return list(G.nodes())
 
     # Count cluster sizes
-    cluster_sizes: Dict[int, int] = {}
+    cluster_sizes: dict[int, int] = {}
     for cluster_id in clusters.values():
         cluster_sizes[cluster_id] = cluster_sizes.get(cluster_id, 0) + 1
 

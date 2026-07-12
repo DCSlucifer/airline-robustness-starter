@@ -3,15 +3,17 @@
 Each turn is recorded to a JSONL file (query, tool, arguments, latency, optional
 tokens/cost, error). This is the observability/LLMOps layer for the assistant.
 """
+
 from __future__ import annotations
 
 import json
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterator, Optional
+from typing import Any
 
 __all__ = ["TurnTrace", "log_turn", "trace_turn", "DEFAULT_TRACE_PATH"]
 
@@ -23,12 +25,12 @@ class TurnTrace:
     """One assistant turn's observability record."""
 
     query: str
-    tool_name: Optional[str] = None
-    arguments: Dict[str, Any] = field(default_factory=dict)
+    tool_name: str | None = None
+    arguments: dict[str, Any] = field(default_factory=dict)
     latency_ms: float = 0.0
-    tokens: Optional[int] = None
-    cost_usd: Optional[float] = None
-    error: Optional[str] = None
+    tokens: int | None = None
+    cost_usd: float | None = None
+    error: str | None = None
     timestamp: str = ""
 
 

@@ -3,8 +3,9 @@ Unit tests for geographic utilities.
 
 Tests cover Haversine distance calculations and radius queries.
 """
-import pytest
+
 import networkx as nx
+
 from src.geo import haversine_km, nodes_within_radius_km
 
 

@@ -4,10 +4,14 @@ Geographic utility functions for spatial analysis.
 This module provides tools for calculating distances and identifying nodes within
 specific geographic regions using the Haversine formula.
 """
+
 from __future__ import annotations
+
 import math
-from typing import Iterable, Tuple, Dict, Generator
+from collections.abc import Generator
+
 import networkx as nx
+
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
@@ -27,13 +31,12 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     dphi = math.radians(lat2 - lat1)
     dlambda = math.radians(lon2 - lon1)
 
-    a = math.sin(dphi/2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda/2)**2
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
     return 2 * R * math.asin(math.sqrt(a))
 
+
 def nodes_within_radius_km(
-    G: nx.Graph,
-    center: Tuple[float, float],
-    radius_km: float
+    G: nx.Graph, center: tuple[float, float], radius_km: float
 ) -> Generator[str, None, None]:
     """
     Identifies nodes within a specified geographic radius from a center point.

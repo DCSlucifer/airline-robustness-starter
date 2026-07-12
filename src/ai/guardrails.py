@@ -3,8 +3,10 @@
 No LLM-supplied value reaches a simulation function without passing through
 ``validate_and_clamp``. This is the production-safety boundary.
 """
+
 from __future__ import annotations
-from typing import Any, Dict
+
+from typing import Any
 
 import networkx as nx
 
@@ -34,7 +36,7 @@ def _clamp(value: float, lo: float, hi: float) -> float:
     return max(lo, min(value, hi))
 
 
-def validate_and_clamp(name: str, args: Dict[str, Any], G: nx.DiGraph) -> Dict[str, Any]:
+def validate_and_clamp(name: str, args: dict[str, Any], G: nx.DiGraph) -> dict[str, Any]:
     """Return a new args dict with safe, in-range values. Raise GuardrailError if invalid."""
     if name not in TOOL_NAMES:
         raise GuardrailError(f"Tool '{name}' is not in the allowed tool list")
@@ -49,7 +51,7 @@ def validate_and_clamp(name: str, args: Dict[str, Any], G: nx.DiGraph) -> Dict[s
         if key not in args:
             raise GuardrailError(f"Missing required argument '{key}' for tool '{name}'")
 
-    out: Dict[str, Any] = dict(args)
+    out: dict[str, Any] = dict(args)
     n_nodes = G.number_of_nodes()
     n_edges = G.number_of_edges()
 

@@ -1,7 +1,9 @@
 """Versioned prompts for the What-If Assistant. Keep all prompt text here."""
+
 from __future__ import annotations
+
 import json
-from typing import Any, Dict
+from typing import Any
 
 ROUTER_SYSTEM_PROMPT = (
     "You translate a user's natural-language question about airline-network "
@@ -22,7 +24,7 @@ EXPLAINER_SYSTEM_PROMPT = (
 )
 
 
-def render_explain_prompt(query: str, tool_name: str, result: Dict[str, Any]) -> str:
+def render_explain_prompt(query: str, tool_name: str, result: dict[str, Any]) -> str:
     """Build the explainer user message from the grounded simulation result."""
     return (
         f"User question: {query}\n"

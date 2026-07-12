@@ -5,10 +5,12 @@ This script verifies that the configuration file can be read, data can be loaded
 from the specified CSVs, and a graph can be successfully built. It prints summary
 statistics to the console.
 """
+
 import yaml
-import pandas as pd
+
 from src.data_io import load_airports, load_routes, merge_airports_routes
 from src.graph_build import build_digraph
+
 
 def main():
     """
@@ -16,7 +18,7 @@ def main():
     """
     # Load configuration
     try:
-        with open("config/default.yaml", "r") as f:
+        with open("config/default.yaml") as f:
             cfg = yaml.safe_load(f)
         print("Configuration loaded successfully:")
         print(cfg)
@@ -40,11 +42,12 @@ def main():
     try:
         A, R = merge_airports_routes(A, R)
         G = build_digraph(A, R, add_distance=True)
-        print(f"Graph built successfully:")
+        print("Graph built successfully:")
         print(f"  Nodes (|V|): {G.number_of_nodes()}")
         print(f"  Edges (|E|): {G.number_of_edges()}")
     except Exception as e:
         print(f"Error building graph: {e}")
+
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,4 @@
-from src.ai.schemas import ToolSelection, AssistantResult
+from src.ai.schemas import AssistantResult, ToolSelection
 
 
 def test_tool_selection_holds_name_and_arguments():

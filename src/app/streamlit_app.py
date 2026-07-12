@@ -1,17 +1,20 @@
+# ruff: noqa: E402
 """
 Streamlit application for interactive airline network robustness analysis.
 
 Provides a web UI for exploring network metrics, running attack simulations,
 and testing defense strategies with visual hierarchy and attack/defense replay.
 """
-import streamlit as st
-import pandas as pd
-import networkx as nx
-import pydeck as pdk
-from pathlib import Path
-import sys
+
 import os
-from typing import Set, Tuple, List, Dict, Any, Optional
+import sys
+from pathlib import Path
+from typing import Any
+
+import networkx as nx
+import pandas as pd
+import pydeck as pdk
+import streamlit as st
 
 # Project root setup
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,18 +23,19 @@ if str(ROOT) not in sys.path:
 
 ALLOWED_DATA_DIR = (ROOT / "data").resolve()
 
+
 def apply_steps_to_graph(
     G: nx.DiGraph,
-    attack_log: List[Dict],
+    attack_log: list[dict],
     attack_step: int,
-    defense_log: List[Dict],
+    defense_log: list[dict],
     defense_step: int,
 ) -> nx.DiGraph:
     H = G.copy()
 
     # Apply removals up to attack_step
-    removed_nodes: Set[str] = set()
-    removed_edges: Set[Tuple[str, str]] = set()
+    removed_nodes: set[str] = set()
+    removed_edges: set[tuple[str, str]] = set()
 
     for entry in attack_log[:attack_step]:
         if not isinstance(entry, dict):
@@ -49,7 +53,7 @@ def apply_steps_to_graph(
         if n in H:
             H.remove_node(n)
 
-    for (u, v) in removed_edges:
+    for u, v in removed_edges:
         if H.has_edge(u, v):
             H.remove_edge(u, v)
         elif H.has_edge(v, u):
@@ -79,43 +83,42 @@ def sanitize_path(filename: str) -> Path:
 
 
 # Imports
-from src.data_io import load_airports, load_routes, merge_airports_routes
-from src.graph_build import build_digraph
-from src.metrics import topological_report
-from src.attacks import (
-    targeted_node_removal,
-    edge_betweenness_attack,
-    geographic_attack_radius,
-    community_bridge_attack,
-    random_node_failures,
-)
-from src.defenses import greedy_edge_addition, node_hardening_list
-from src.constants import DEFAULT_TOP_N_HIGHLIGHTED, ATTACK_NODE_COLOR, NODE_SIZE_ATTACKED
-from src.clustering import (
-    community_clustering,
-    geographic_clustering,
-    cluster_aggregates,
-    get_unclustered_nodes,
-)
-from src.viz import compute_node_emphasis, build_node_layer, build_edge_layer, build_cluster_layer
-from src.ai.orchestrator import run_whatif
 from src.ai.factory import make_client
+from src.ai.guardrails import GuardrailError
+from src.ai.orchestrator import run_whatif
 from src.ai.rag.advisor import answer as rag_answer
 from src.ai.rag.embedder import OpenAIEmbedder
-from src.ai.rag.store import VectorStore
 from src.ai.rag.index import INDEX_PATH
-from src.ai.guardrails import GuardrailError
+from src.ai.rag.store import VectorStore
+from src.attacks import (
+    community_bridge_attack,
+    edge_betweenness_attack,
+    geographic_attack_radius,
+    targeted_node_removal,
+)
+from src.clustering import (
+    cluster_aggregates,
+    community_clustering,
+    geographic_clustering,
+    get_unclustered_nodes,
+)
+from src.constants import ATTACK_NODE_COLOR, DEFAULT_TOP_N_HIGHLIGHTED, NODE_SIZE_ATTACKED
+from src.data_io import load_airports, load_routes, merge_airports_routes
+from src.defenses import greedy_edge_addition
+from src.graph_build import build_digraph
+from src.metrics import topological_report
+from src.viz import build_cluster_layer, build_edge_layer, build_node_layer, compute_node_emphasis
 
 
 # --- Caching ---
 @st.cache_data(ttl=300)
-def cached_community_clustering(_hash: str, _G: nx.DiGraph) -> Dict[str, int]:
+def cached_community_clustering(_hash: str, _G: nx.DiGraph) -> dict[str, int]:
     """Cached community detection. _G prefixed to skip hashing."""
     return community_clustering(_G)
 
 
 @st.cache_data(ttl=300)
-def cached_geographic_clustering(_hash: str, _G: nx.DiGraph) -> Dict[str, int]:
+def cached_geographic_clustering(_hash: str, _G: nx.DiGraph) -> dict[str, int]:
     """Cached geographic clustering. _G prefixed to skip hashing."""
     return geographic_clustering(_G)
 
@@ -125,10 +128,13 @@ def graph_hash(G: nx.DiGraph) -> str:
 
 
 # --- App Config ---
-st.set_page_config(page_title="Airline Network Robustness", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(
+    page_title="Airline Network Robustness", layout="wide", initial_sidebar_state="collapsed"
+)
 
 # Minimal CSS
-st.markdown("""
+st.markdown(
+    """
 <style>
     .metric-card {
         background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
@@ -143,10 +149,12 @@ st.markdown("""
     .stRadio > div { flex-direction: row; gap: 8px; }
     .stRadio label { font-size: 13px; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
-def metric_card(label: str, value: Any, delta: Optional[float] = None) -> str:
+def metric_card(label: str, value: Any, delta: float | None = None) -> str:
     delta_html = ""
     if delta is not None and delta != 0:
         cls = "metric-delta-up" if delta > 0 else "metric-delta-down"
@@ -154,16 +162,18 @@ def metric_card(label: str, value: Any, delta: Optional[float] = None) -> str:
         delta_html = f'<div class="{cls}">{sign}{delta:.1%}</div>'
 
     if isinstance(value, float):
-        value_str = "∞" if value == float('inf') else f"{value:.2f}" if value > 1 else f"{value:.1%}"
+        value_str = (
+            "∞" if value == float("inf") else f"{value:.2f}" if value > 1 else f"{value:.1%}"
+        )
     else:
         value_str = str(value)
 
     return f'<div class="metric-card"><div class="metric-label">{label}</div><div class="metric-value">{value_str}</div>{delta_html}</div>'
 
 
-def extract_attack_data(log: List[Dict], step: int) -> Tuple[Set[str], Set[Tuple[str, str]]]:
+def extract_attack_data(log: list[dict], step: int) -> tuple[set[str], set[tuple[str, str]]]:
     nodes, edges = set(), set()
-    for i, entry in enumerate(log[:step]):
+    for entry in log[:step]:
         if "removed_node" in entry:
             nodes.add(entry["removed_node"])
         if "removed_nodes" in entry:
@@ -175,16 +185,17 @@ def extract_attack_data(log: List[Dict], step: int) -> Tuple[Set[str], Set[Tuple
     return nodes, edges
 
 
-def extract_defense_data(log: List[Dict], step: int) -> Set[Tuple[str, str]]:
+def extract_defense_data(log: list[dict], step: int) -> set[tuple[str, str]]:
     edges = set()
     for entry in log[:step]:
         if "added_edges" in entry:
             for u, v in entry["added_edges"]:
-                a, b = (u, v) if u < v else (v, u)   # canonical undirected for display
+                a, b = (u, v) if u < v else (v, u)  # canonical undirected for display
                 edges.add((a, b))
     return edges
 
-def build_removed_nodes_layer(G_ref: nx.DiGraph, removed_nodes: Set[str]) -> Optional[pdk.Layer]:
+
+def build_removed_nodes_layer(G_ref: nx.DiGraph, removed_nodes: set[str]) -> pdk.Layer | None:
     rows = []
     for n in removed_nodes:
         if n not in G_ref:
@@ -193,12 +204,14 @@ def build_removed_nodes_layer(G_ref: nx.DiGraph, removed_nodes: Set[str]) -> Opt
         lat, lon = d.get("lat"), d.get("lon")
         if lat is None or lon is None:
             continue
-        rows.append({
-            "iata": n,
-            "name": d.get("name", n),
-            "lat": lat,
-            "lon": lon,
-        })
+        rows.append(
+            {
+                "iata": n,
+                "name": d.get("name", n),
+                "lat": lat,
+                "lon": lon,
+            }
+        )
 
     if not rows:
         return None
@@ -216,11 +229,10 @@ def build_removed_nodes_layer(G_ref: nx.DiGraph, removed_nodes: Set[str]) -> Opt
     )
 
 
-
 # --- Session State ---
 for key, default in [
-    ("G", None),                 # original loaded graph
-    ("G_base", None),            # scenario baseline (replay base)
+    ("G", None),  # original loaded graph
+    ("G_base", None),  # scenario baseline (replay base)
     ("attack_log", []),
     ("defense_log", []),
     ("baseline_report", None),
@@ -243,18 +255,19 @@ with st.sidebar:
             routes = load_routes(str(sanitize_path(routes_file)))
             airports, routes = merge_airports_routes(airports, routes)
             G = build_digraph(airports, routes, add_distance=True)
-            st.session_state.update({
-        "G": G,
-        "G_base": G,  # baseline của kịch bản hiện tại
-        "baseline_report": topological_report(G, fast_mode=True),
-        "attack_log": [],
-        "defense_log": [],
-        "hardened_nodes": set(),
-        "defense_base_attack_step": 0,
-        "atk_step": 0,
-        "def_step": 0,
-    })
-
+            st.session_state.update(
+                {
+                    "G": G,
+                    "G_base": G,  # baseline của kịch bản hiện tại
+                    "baseline_report": topological_report(G, fast_mode=True),
+                    "attack_log": [],
+                    "defense_log": [],
+                    "hardened_nodes": set(),
+                    "defense_base_attack_step": 0,
+                    "atk_step": 0,
+                    "def_step": 0,
+                }
+            )
 
             st.success(f"{G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
         except Exception as e:
@@ -280,14 +293,24 @@ with left:
     )
 
     top_n = st.slider("Top-N nodes", 5, 50, DEFAULT_TOP_N_HIGHLIGHTED, key="top_n")
-    emphasis_metric = st.selectbox("Rank by", ["degree", "betweenness", "pagerank"], key="emph_metric")
+    emphasis_metric = st.selectbox(
+        "Rank by", ["degree", "betweenness", "pagerank"], key="emph_metric"
+    )
     labels_emphasized = st.checkbox("Labels: emphasized only", True, key="labels_emph")
-    cluster_mode = st.radio("Cluster", ["Off", "Community", "Geographic"], key="cluster", horizontal=True)
+    cluster_mode = st.radio(
+        "Cluster", ["Off", "Community", "Geographic"], key="cluster", horizontal=True
+    )
 
     st.caption("ATTACK")
-    attack_type = st.selectbox("Type", ["targeted_nodes", "edge_betweenness", "geographic_radius", "community_bridge"], key="atk_type", label_visibility="collapsed")
-    chain_attack = st.checkbox("Chain attack from current replay state", value=False, key="chain_attack")
-
+    attack_type = st.selectbox(
+        "Type",
+        ["targeted_nodes", "edge_betweenness", "geographic_radius", "community_bridge"],
+        key="atk_type",
+        label_visibility="collapsed",
+    )
+    chain_attack = st.checkbox(
+        "Chain attack from current replay state", value=False, key="chain_attack"
+    )
 
     if attack_type == "targeted_nodes":
         c1, c2 = st.columns(2)
@@ -321,10 +344,24 @@ with left:
                     G_attack_base = G_base
 
                 if attack_type == "targeted_nodes":
-                    H, log = targeted_node_removal(G_attack_base, k=atk_k, metric=atk_metric, adaptive=True, fast_mode=fast_mode, report_every_n=max(1, atk_k // 20))
+                    H, log = targeted_node_removal(
+                        G_attack_base,
+                        k=atk_k,
+                        metric=atk_metric,
+                        adaptive=True,
+                        fast_mode=fast_mode,
+                        report_every_n=max(1, atk_k // 20),
+                    )
 
                 elif attack_type == "edge_betweenness":
-                    H, log = edge_betweenness_attack(G_attack_base, m=atk_m, adaptive=True, fast_mode=fast_mode, report_every_n=max(1, atk_m // 20), recompute_every=1)
+                    H, log = edge_betweenness_attack(
+                        G_attack_base,
+                        m=atk_m,
+                        adaptive=True,
+                        fast_mode=fast_mode,
+                        report_every_n=max(1, atk_m // 20),
+                        recompute_every=1,
+                    )
 
                 elif attack_type == "geographic_radius":
                     H, info = geographic_attack_radius(G_attack_base, (atk_lat, atk_lon), atk_rad)
@@ -336,14 +373,16 @@ with left:
                     info["report"] = topological_report(H, fast_mode=fast_mode)
                     log = [info]
 
-                st.session_state.update({
-                "attack_log": log,
-                "H_attack": H,
-                "defense_log": [],                 # reset defense vì attack mới
-                "defense_base_attack_step": 0,
-                "def_step": 0,
-                "atk_step": len(log),
-            })
+                st.session_state.update(
+                    {
+                        "attack_log": log,
+                        "H_attack": H,
+                        "defense_log": [],  # reset defense vì attack mới
+                        "defense_base_attack_step": 0,
+                        "def_step": 0,
+                        "atk_step": len(log),
+                    }
+                )
 
                 st.toast("Attack complete")
             except Exception as e:
@@ -357,27 +396,33 @@ with left:
     if st.button("Run Defense", use_container_width=True):
         with st.spinner("..."):
             try:
-                atk_step_for_def = int(st.session_state.get("atk_step", len(st.session_state.get("attack_log", []))))
+                atk_step_for_def = int(
+                    st.session_state.get("atk_step", len(st.session_state.get("attack_log", [])))
+                )
                 attack_log_now = st.session_state.get("attack_log", [])
 
                 G_base_now = st.session_state.get("G_base") or st.session_state.get("G")
 
                 # Defense MUST be computed on attacked graph at current attack step
-                G_for_defense = apply_steps_to_graph(G_base_now, attack_log_now, atk_step_for_def, [], 0)
+                G_for_defense = apply_steps_to_graph(
+                    G_base_now, attack_log_now, atk_step_for_def, [], 0
+                )
 
                 H, log = greedy_edge_addition(
                     G_for_defense,
                     budget=def_budget,
                     max_distance_km=float(def_dist),
-                    fast_mode=fast_mode
+                    fast_mode=fast_mode,
                 )
 
-                st.session_state.update({
-                    "defense_log": log,
-                    "H_defense": H,
-                    "defense_base_attack_step": atk_step_for_def,
-                    "def_step": len(log),
-                })
+                st.session_state.update(
+                    {
+                        "defense_log": log,
+                        "H_defense": H,
+                        "defense_base_attack_step": atk_step_for_def,
+                        "def_step": len(log),
+                    }
+                )
 
                 st.toast(f"Defense complete (based on attack step {atk_step_for_def})")
 
@@ -392,24 +437,35 @@ with left:
 
         G_base_now = st.session_state.get("G_base") or st.session_state.get("G")
 
-        committed = apply_steps_to_graph(G_base_now, attack_log_now, atk_step_now, defense_log_now, def_step_now)
+        committed = apply_steps_to_graph(
+            G_base_now, attack_log_now, atk_step_now, defense_log_now, def_step_now
+        )
 
-        st.session_state.update({
-            "G_base": committed,
-            "attack_log": [],
-            "defense_log": [],
-            "defense_base_attack_step": 0,
-            "atk_step": 0,
-            "def_step": 0,
-        })
+        st.session_state.update(
+            {
+                "G_base": committed,
+                "attack_log": [],
+                "defense_log": [],
+                "defense_base_attack_step": 0,
+                "atk_step": 0,
+                "def_step": 0,
+            }
+        )
         st.toast("Committed. Baseline updated.")
 
     st.caption("ASK AI")
     ai_provider = st.selectbox("Provider", ["openai", "anthropic"], key="ai_provider")
-    api_key = st.text_input("API key", type="password", key="ai_key",
-                            help="Your key is used only for this session (BYOK).")
-    ai_query = st.text_input("Ask a what-if question", key="ai_query",
-                             placeholder="What if a storm hits the US East Coast?")
+    api_key = st.text_input(
+        "API key",
+        type="password",
+        key="ai_key",
+        help="Your key is used only for this session (BYOK).",
+    )
+    ai_query = st.text_input(
+        "Ask a what-if question",
+        key="ai_query",
+        placeholder="What if a storm hits the US East Coast?",
+    )
     if st.button("Ask AI", use_container_width=True):
         if not api_key:
             st.warning("Enter an API key to use the assistant.")
@@ -474,7 +530,11 @@ with center:
     # Compact step controls
     if attack_log or defense_log:
         c1, c2 = st.columns(2)
-        attack_step = c1.slider("Attack step", 0, max(1, len(attack_log)), len(attack_log), key="atk_step") if attack_log else 0
+        attack_step = (
+            c1.slider("Attack step", 0, max(1, len(attack_log)), len(attack_log), key="atk_step")
+            if attack_log
+            else 0
+        )
 
         base_step = int(st.session_state.get("defense_base_attack_step", 0))
         defense_reset_needed = False
@@ -482,10 +542,16 @@ with center:
             st.session_state["def_step"] = 0
             defense_reset_needed = True
 
-        defense_step = c2.slider("Defense step", 0, max(1, len(defense_log)), len(defense_log), key="def_step") if defense_log else 0
+        defense_step = (
+            c2.slider("Defense step", 0, max(1, len(defense_log)), len(defense_log), key="def_step")
+            if defense_log
+            else 0
+        )
 
         if defense_reset_needed:
-            st.info(f"Defense was computed at attack step {base_step}. Set Attack step ≥ {base_step} to replay defense.")
+            st.info(
+                f"Defense was computed at attack step {base_step}. Set Attack step ≥ {base_step} to replay defense."
+            )
     else:
         attack_step, defense_step = 0, 0
     removed_nodes, removed_edges = extract_attack_data(attack_log, attack_step)
@@ -497,17 +563,23 @@ with center:
     clusters, cluster_aggs = {}, None
     if use_clusters:
         h = graph_hash(G)
-        clusters = cached_community_clustering(h, G) if cluster_mode == "Community" else cached_geographic_clustering(h, G)
+        clusters = (
+            cached_community_clustering(h, G)
+            if cluster_mode == "Community"
+            else cached_geographic_clustering(h, G)
+        )
         cluster_aggs = cluster_aggregates(G, clusters)
 
     # Node emphasis
-    current_step_G = apply_steps_to_graph(G_base, attack_log, attack_step, defense_log, defense_step)
-    emphasis = compute_node_emphasis(current_step_G, top_n, emphasis_metric, removed_nodes, hardened)
-
+    current_step_G = apply_steps_to_graph(
+        G_base, attack_log, attack_step, defense_log, defense_step
+    )
+    emphasis = compute_node_emphasis(
+        current_step_G, top_n, emphasis_metric, removed_nodes, hardened
+    )
 
     # Build layers
     layers = build_edge_layer(current_step_G, removed_edges, added_edges)
-
 
     if use_clusters and cluster_aggs:
         cl = build_cluster_layer(cluster_aggs)
@@ -537,15 +609,19 @@ with center:
     st.pydeck_chart(deck, use_container_width=True)
 
     # Compact legend
-    st.markdown('<div style="text-align:center;font-size:11px;color:#888;margin-top:4px;">🟠 Top-N  🔴 Removed  🟢 Added  🔵 Hardened  🟣 Cluster</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div style="text-align:center;font-size:11px;color:#888;margin-top:4px;">🟠 Top-N  🔴 Removed  🟢 Added  🔵 Hardened  🟣 Cluster</div>',
+        unsafe_allow_html=True,
+    )
 
 # --- Right: Metrics ---
 with right:
     # Build graph at the selected replay steps
-    current_step_G = apply_steps_to_graph(G_base, attack_log, attack_step, defense_log, defense_step)
+    current_step_G = apply_steps_to_graph(
+        G_base, attack_log, attack_step, defense_log, defense_step
+    )
     report = topological_report(current_step_G, fast_mode=fast_mode)
     baseline = topological_report(G_base, fast_mode=fast_mode)
-
 
     def delta(k):
         if baseline and k in baseline and baseline[k] and baseline[k] != 0:
@@ -554,21 +630,21 @@ with right:
 
     st.caption("CONNECTIVITY")
     st.markdown(
-    metric_card(
-        "GWCC",
-        f"{100 * report['gwcc_frac']:.3f}%<br><span style='font-size:13px;color:#9aa4b2'>{report['gwcc_n']}/{report['n_nodes']} nodes</span>",
-        delta("gwcc_frac"),
-    ),
-    unsafe_allow_html=True,
+        metric_card(
+            "GWCC",
+            f"{100 * report['gwcc_frac']:.3f}%<br><span style='font-size:13px;color:#9aa4b2'>{report['gwcc_n']}/{report['n_nodes']} nodes</span>",
+            delta("gwcc_frac"),
+        ),
+        unsafe_allow_html=True,
     )
 
     st.markdown(
-    metric_card(
-        "GSCC",
-        f"{100 * report['gscc_frac']:.3f}%<br><span style='font-size:13px;color:#9aa4b2'>{report['gscc_n']}/{report['n_nodes']} nodes</span>",
-        delta("gscc_frac"),
-    ),
-    unsafe_allow_html=True,
+        metric_card(
+            "GSCC",
+            f"{100 * report['gscc_frac']:.3f}%<br><span style='font-size:13px;color:#9aa4b2'>{report['gscc_n']}/{report['n_nodes']} nodes</span>",
+            delta("gscc_frac"),
+        ),
+        unsafe_allow_html=True,
     )
 
     st.markdown(metric_card("Components", report["n_components"]), unsafe_allow_html=True)

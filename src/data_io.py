@@ -9,9 +9,11 @@ Expected CSV schemas:
 - airports.csv: Must contain [airport_id, name, city, country, iata, icao, lat, lon]
 - routes.csv: Must contain [source_iata, dest_iata] representing directed edges.
 """
+
 from __future__ import annotations
+
 import pandas as pd
-from typing import Tuple
+
 
 def load_airports(path: str) -> pd.DataFrame:
     """
@@ -38,6 +40,7 @@ def load_airports(path: str) -> pd.DataFrame:
     # Ensure IATA codes are treated as strings (e.g., to avoid issues with 'NaN' or numeric-like codes)
     df["iata"] = df["iata"].astype(str)
     return df
+
 
 def load_routes(path: str) -> pd.DataFrame:
     """
@@ -66,7 +69,10 @@ def load_routes(path: str) -> pd.DataFrame:
     df["dest_iata"] = df["dest_iata"].astype(str)
     return df
 
-def merge_airports_routes(airports: pd.DataFrame, routes: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+
+def merge_airports_routes(
+    airports: pd.DataFrame, routes: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Filters routes to ensure both endpoints exist in the airports dataset.
 

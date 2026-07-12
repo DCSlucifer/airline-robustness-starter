@@ -4,27 +4,29 @@ Defense strategies for enhancing network robustness.
 This module implements strategies to improve network resilience, such as adding
 strategic edges (redundancy) to connect communities or hardening critical nodes.
 """
+
 from __future__ import annotations
-from typing import List, Tuple, Dict, Iterable, Optional
-import warnings
+
 import itertools
+import warnings
+
 import networkx as nx
-import pandas as pd
 
 __all__ = [
     "greedy_edge_addition",
     "node_hardening_list",
 ]
 
-from .metrics import topological_report
 from .geo import haversine_km
+from .metrics import topological_report
+
 
 def _candidate_pairs(
     G: nx.DiGraph,
     max_distance_km: float = 3000,
     across_communities: bool = True,
-    top_n_per_comm: int = 10
-) -> List[Tuple[str, str]]:
+    top_n_per_comm: int = 10,
+) -> list[tuple[str, str]]:
     """
     Generates a list of candidate node pairs for edge addition.
 
@@ -44,6 +46,7 @@ def _candidate_pairs(
     # Use the undirected view for community detection as it captures structural clusters better.
     U = G.to_undirected()
     from networkx.algorithms.community import label_propagation_communities
+
     comms = list(label_propagation_communities(U))
 
     # Map each node to its community ID for quick lookup
@@ -55,7 +58,7 @@ def _candidate_pairs(
     # Select top-N nodes by degree from each community to form a candidate pool.
     # High-degree nodes are good candidates for "hubs" to connect communities.
     candidates = []
-    for cid, c in enumerate(comms):
+    for c in comms:
         nodes = sorted(list(c), key=lambda n: U.degree(n), reverse=True)[:top_n_per_comm]
         candidates.extend(nodes)
 
@@ -85,13 +88,13 @@ def _candidate_pairs(
 
     return pairs
 
+
 def greedy_edge_addition(
     G: nx.DiGraph,
     budget: int = 5,
     max_distance_km: float = 3000,
     fast_mode: bool = True,
-) -> Tuple[nx.DiGraph, List[Dict]]:
-
+) -> tuple[nx.DiGraph, list[dict]]:
     """
     Greedily adds edges to the graph to maximize robustness metrics.
 
@@ -113,14 +116,16 @@ def greedy_edge_addition(
 
     # Input validation
     if budget <= 0:
-        warnings.warn("budget must be positive, returning unchanged graph", UserWarning)
+        warnings.warn(
+            "budget must be positive, returning unchanged graph", UserWarning, stacklevel=2
+        )
         return H, log
 
     if max_distance_km <= 0:
         raise ValueError("max_distance_km must be positive")
 
     if G.number_of_nodes() < 2:
-        warnings.warn("Graph has fewer than 2 nodes, cannot add edges", UserWarning)
+        warnings.warn("Graph has fewer than 2 nodes, cannot add edges", UserWarning, stacklevel=2)
         return H, log
 
     for b in range(budget):
@@ -152,13 +157,12 @@ def greedy_edge_addition(
         if not top_candidates:
             break
 
-        for (u, v) in top_candidates:
+        for u, v in top_candidates:
             # Temporarily add bidirectional edge u <-> v
             H.add_edge(u, v)
             H.add_edge(v, u)
 
             rep = topological_report(H, fast_mode=fast_mode)
-
 
             # Scoring function:
             # Primary objective: Maximize GWCC fraction (connectivity).
@@ -186,18 +190,14 @@ def greedy_edge_addition(
 
         # Ensure we have a report for the final state if it wasn't the last checked
         if best_report is None:
-             best_report = topological_report(H, fast_mode=fast_mode)
+            best_report = topological_report(H, fast_mode=fast_mode)
 
-
-        log.append({
-            "step": b + 1,
-            "added_edges": [(u, v), (v, u)],
-            "report_after": best_report
-        })
+        log.append({"step": b + 1, "added_edges": [(u, v), (v, u)], "report_after": best_report})
 
     return H, log
 
-def node_hardening_list(G: nx.DiGraph, top_n: int = 10, metric: str = "betweenness") -> List[str]:
+
+def node_hardening_list(G: nx.DiGraph, top_n: int = 10, metric: str = "betweenness") -> list[str]:
     """
     Identifies a list of critical nodes to 'harden' (protect) against attacks.
 

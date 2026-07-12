@@ -6,9 +6,10 @@ Usage:
     python run_demo.py                    # Normal mode
     python run_demo.py --port 8502        # Custom port
 """
+
+import argparse
 import subprocess
 import sys
-import argparse
 from pathlib import Path
 
 
@@ -20,7 +21,10 @@ def main():
     root = Path(__file__).parent
 
     cmd = [
-        sys.executable, "-m", "streamlit", "run",
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
         str(root / "src" / "app" / "streamlit_app.py"),
         f"--server.port={args.port}",
         "--server.headless=true",

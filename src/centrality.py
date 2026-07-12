@@ -4,10 +4,12 @@ Centrality metric computations for network analysis.
 This module provides functions to calculate and aggregate various centrality
 measures (degree, betweenness, PageRank) for nodes in the graph.
 """
+
 from __future__ import annotations
+
 import networkx as nx
 import pandas as pd
-from typing import Dict
+
 
 def node_centralities(G: nx.DiGraph) -> pd.DataFrame:
     """
@@ -41,13 +43,15 @@ def node_centralities(G: nx.DiGraph) -> pd.DataFrame:
     pr = nx.pagerank(G, alpha=0.85)
 
     # Aggregate results into a DataFrame
-    df = pd.DataFrame({
-        "node": list(G.nodes()),
-        "deg_in": [deg_in.get(n, 0) for n in G.nodes()],
-        "deg_out": [deg_out.get(n, 0) for n in G.nodes()],
-        "betweenness": [btw.get(n, 0.0) for n in G.nodes()],
-        "pagerank": [pr.get(n, 0.0) for n in G.nodes()],
-    })
+    df = pd.DataFrame(
+        {
+            "node": list(G.nodes()),
+            "deg_in": [deg_in.get(n, 0) for n in G.nodes()],
+            "deg_out": [deg_out.get(n, 0) for n in G.nodes()],
+            "betweenness": [btw.get(n, 0.0) for n in G.nodes()],
+            "pagerank": [pr.get(n, 0.0) for n in G.nodes()],
+        }
+    )
 
     # Compute total degree as a summary metric
     df["deg_total"] = df["deg_in"] + df["deg_out"]

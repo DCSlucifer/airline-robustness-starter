@@ -1,7 +1,7 @@
 import pytest
 
-from src.ai.factory import make_client, DEFAULT_PROVIDER
-from src.ai.llm_client import OpenAIClient, ClaudeClient
+from src.ai.factory import DEFAULT_PROVIDER, make_client
+from src.ai.llm_client import ClaudeClient, OpenAIClient
 
 
 def test_default_provider_is_openai():

@@ -4,16 +4,17 @@ Unit tests for attack simulation functions.
 Tests cover targeted node removal, random failures, edge betweenness attacks,
 geographic attacks, and community bridge attacks with various edge cases.
 """
-import pytest
+
 import warnings
-import networkx as nx
+
+import pytest
+
 from src.attacks import (
-    targeted_node_removal,
-    random_node_failures,
+    collective_influence_scores,
     edge_betweenness_attack,
     geographic_attack_radius,
-    community_bridge_attack,
-    collective_influence_scores,
+    random_node_failures,
+    targeted_node_removal,
 )
 
 
@@ -99,7 +100,7 @@ class TestRandomNodeFailures:
         """Should produce same results with same seed."""
         reports1 = random_node_failures(simple_digraph, k=2, R=3, seed=42)
         reports2 = random_node_failures(simple_digraph, k=2, R=3, seed=42)
-        for r1, r2 in zip(reports1, reports2):
+        for r1, r2 in zip(reports1, reports2, strict=True):
             assert r1["removed_nodes"] == r2["removed_nodes"]
 
     def test_k_exceeds_nodes_capped(self, simple_digraph):
@@ -130,7 +131,6 @@ class TestEdgeBetweennessAttack:
 
     def test_removes_m_edges_nonadaptive(self, simple_digraph):
         """Should remove m edges in non-adaptive mode."""
-        original_edges = simple_digraph.number_of_edges()
         m = 2
         H, log = edge_betweenness_attack(simple_digraph, m=m, adaptive=False)
         # Non-adaptive should also remove m edges

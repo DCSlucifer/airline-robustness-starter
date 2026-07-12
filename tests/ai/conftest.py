@@ -1,4 +1,5 @@
 """Shared fixtures for AI assistant tests."""
+
 import networkx as nx
 import pytest
 
@@ -18,9 +19,18 @@ def small_graph() -> nx.DiGraph:
     for iata, (lat, lon) in coords.items():
         G.add_node(iata, lat=lat, lon=lon, name=iata)
     edges = [
-        ("AAA", "BBB"), ("BBB", "AAA"), ("AAA", "CCC"), ("CCC", "AAA"),
-        ("CCC", "FFF"), ("FFF", "CCC"), ("DDD", "EEE"), ("EEE", "DDD"),
-        ("BBB", "DDD"), ("DDD", "BBB"), ("AAA", "DDD"), ("DDD", "AAA"),
+        ("AAA", "BBB"),
+        ("BBB", "AAA"),
+        ("AAA", "CCC"),
+        ("CCC", "AAA"),
+        ("CCC", "FFF"),
+        ("FFF", "CCC"),
+        ("DDD", "EEE"),
+        ("EEE", "DDD"),
+        ("BBB", "DDD"),
+        ("DDD", "BBB"),
+        ("AAA", "DDD"),
+        ("DDD", "AAA"),
     ]
     G.add_edges_from(edges)
     return G

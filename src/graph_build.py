@@ -4,14 +4,18 @@ Graph construction utilities for the airline network.
 This module provides functions to build a NetworkX directed graph from airport
 and route data, including the calculation of edge weights (distances).
 """
+
 from __future__ import annotations
+
 import networkx as nx
 import pandas as pd
-from typing import Tuple, Optional
 
 from .geo import haversine_km  # Import from geo.py to avoid DRY violation
 
-def build_digraph(airports: pd.DataFrame, routes: pd.DataFrame, add_distance: bool = True) -> nx.DiGraph:
+
+def build_digraph(
+    airports: pd.DataFrame, routes: pd.DataFrame, add_distance: bool = True
+) -> nx.DiGraph:
     """
     Builds a directed graph (DiGraph) from airport and route data.
 

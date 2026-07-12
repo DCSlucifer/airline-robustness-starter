@@ -1,6 +1,8 @@
 """Resilience Advisor: retrieve relevant chunks and answer with grounded citations."""
+
 from __future__ import annotations
-from typing import Any, Dict, List
+
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -20,10 +22,10 @@ ADVISOR_SYSTEM_PROMPT = (
 class RagAnswer(BaseModel):
     question: str
     answer: str
-    sources: List[Dict[str, Any]]
+    sources: list[dict[str, Any]]
 
 
-def render_context(hits: List[Hit], numbers: List[int]) -> str:
+def render_context(hits: list[Hit], numbers: list[int]) -> str:
     """Render each chunk prefixed by its SOURCE number so [n] aligns with the source list.
 
     `numbers[i]` is the 1-based index (within the deduped source list) of `hits[i]`. Chunks from
@@ -31,11 +33,12 @@ def render_context(hits: List[Hit], numbers: List[int]) -> str:
     correspondence with the rendered sources.
     """
     return "\n\n".join(
-        f"[{num}] ({h.source.get('title', '?')})\n{h.text}" for num, h in zip(numbers, hits)
+        f"[{num}] ({h.source.get('title', '?')})\n{h.text}"
+        for num, h in zip(numbers, hits, strict=True)
     )
 
 
-def _dedupe_sources(hits: List[Hit]) -> List[Dict[str, Any]]:
+def _dedupe_sources(hits: list[Hit]) -> list[dict[str, Any]]:
     seen, out = set(), []
     for h in hits:
         key = (h.source.get("title"), h.source.get("url"))

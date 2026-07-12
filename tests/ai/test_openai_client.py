@@ -1,5 +1,5 @@
-from src.ai.schemas import ToolSelection
 from src.ai.llm_client import OpenAIClient, _to_openai_tools
+from src.ai.schemas import ToolSelection
 
 
 class _StubFunction:
@@ -56,8 +56,11 @@ _SAMPLE_SPECS = [
         "strict": True,
         "input_schema": {
             "type": "object",
-            "properties": {"lat": {"type": "number"}, "lon": {"type": "number"},
-                           "radius_km": {"type": "number"}},
+            "properties": {
+                "lat": {"type": "number"},
+                "lon": {"type": "number"},
+                "radius_km": {"type": "number"},
+            },
             "required": ["lat", "lon", "radius_km"],
             "additionalProperties": False,
         },

@@ -1,9 +1,13 @@
-from src.ai.rag.embedder import FakeEmbedder
-from src.ai.rag.store import VectorStore
 from src.ai.rag.chunker import Chunk
+from src.ai.rag.embedder import FakeEmbedder
 from src.ai.rag.eval_rag import (
-    RetrievalCase, RetrievalReport, evaluate_retrieval, format_report, GOLDEN_QUESTIONS,
+    GOLDEN_QUESTIONS,
+    RetrievalCase,
+    RetrievalReport,
+    evaluate_retrieval,
+    format_report,
 )
+from src.ai.rag.store import VectorStore
 
 
 def _store(emb, items):
@@ -35,4 +39,6 @@ def test_format_report_contains_recall():
 
 def test_golden_questions_nonempty_and_typed():
     assert len(GOLDEN_QUESTIONS) >= 6
-    assert all(isinstance(c, RetrievalCase) and c.question and c.expected_title for c in GOLDEN_QUESTIONS)
+    assert all(
+        isinstance(c, RetrievalCase) and c.question and c.expected_title for c in GOLDEN_QUESTIONS
+    )

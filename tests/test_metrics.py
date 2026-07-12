@@ -3,12 +3,11 @@ Unit tests for network metrics functions.
 
 Tests cover GWCC, GSCC, ASPL, diameter, and OD reachability calculations.
 """
-import pytest
-import networkx as nx
+
 from src.metrics import (
-    gwcc,
-    gscc,
     aspl_and_diameter_on_gwcc,
+    gscc,
+    gwcc,
     percent_od_within_hops,
     topological_report,
 )
@@ -108,8 +107,14 @@ class TestTopologicalReport:
         """Should return dict with all expected metric keys."""
         report = topological_report(simple_digraph)
         expected_keys = [
-            "n_nodes", "n_edges", "gwcc_frac", "gscc_frac",
-            "n_components", "aspl_gwcc", "diameter_gwcc", "pct_od_within_H"
+            "n_nodes",
+            "n_edges",
+            "gwcc_frac",
+            "gscc_frac",
+            "n_components",
+            "aspl_gwcc",
+            "diameter_gwcc",
+            "pct_od_within_H",
         ]
         for key in expected_keys:
             assert key in report

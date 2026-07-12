@@ -1,9 +1,9 @@
 import pytest
 
-from src.ai.schemas import ToolSelection, AssistantResult
+from src.ai.guardrails import GuardrailError
 from src.ai.llm_client import FakeLLMClient
 from src.ai.orchestrator import run_whatif
-from src.ai.guardrails import GuardrailError
+from src.ai.schemas import AssistantResult, ToolSelection
 
 
 def test_run_whatif_end_to_end_grounded(small_graph):

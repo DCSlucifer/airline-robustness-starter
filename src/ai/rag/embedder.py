@@ -1,8 +1,10 @@
 """Provider-swappable text embedders. Only OpenAIEmbedder talks to a provider SDK."""
+
 from __future__ import annotations
+
 import hashlib
 import math
-from typing import Any, List, Optional, Protocol
+from typing import Any, Protocol
 
 __all__ = ["Embedder", "FakeEmbedder", "OpenAIEmbedder"]
 
@@ -10,7 +12,7 @@ __all__ = ["Embedder", "FakeEmbedder", "OpenAIEmbedder"]
 class Embedder(Protocol):
     """Maps texts to fixed-length vectors. The RAG layer depends only on this."""
 
-    def embed(self, texts: List[str]) -> List[List[float]]: ...
+    def embed(self, texts: list[str]) -> list[list[float]]: ...
 
 
 class FakeEmbedder:
@@ -19,11 +21,11 @@ class FakeEmbedder:
     def __init__(self, dim: int = 16):
         self.dim = dim
 
-    def embed(self, texts: List[str]) -> List[List[float]]:
+    def embed(self, texts: list[str]) -> list[list[float]]:
         return [self._vec(t) for t in texts]
 
-    def _vec(self, text: str) -> List[float]:
-        raw: List[float] = []
+    def _vec(self, text: str) -> list[float]:
+        raw: list[float] = []
         seed = text.encode("utf-8")
         i = 0
         while len(raw) < self.dim:
@@ -42,7 +44,7 @@ class OpenAIEmbedder:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         model: str = "text-embedding-3-small",
         _client: Any = None,
     ):
@@ -51,8 +53,9 @@ class OpenAIEmbedder:
             self._client = _client
         else:
             import openai  # lazy, so tests don't require the SDK
+
             self._client = openai.OpenAI(api_key=api_key) if api_key else openai.OpenAI()
 
-    def embed(self, texts: List[str]) -> List[List[float]]:
+    def embed(self, texts: list[str]) -> list[list[float]]:
         resp = self._client.embeddings.create(model=self.model, input=texts)
         return [item.embedding for item in resp.data]
