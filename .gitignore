@@ -26,6 +26,12 @@ venv/
 env/
 ENV/
 
+# Local secrets
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
 # Testing
 .pytest_cache/
 .coverage
@@ -55,6 +61,9 @@ Thumbs.db
 # Project specific
 outputs/
 *.log
+
+# Generated RAG corpus/index artifacts are local until deliberately reviewed for release.
+data/kb/
 
 # Subagent-driven development scratch
 .superpowers/
