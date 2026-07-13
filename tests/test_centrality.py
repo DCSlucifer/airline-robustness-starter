@@ -9,7 +9,7 @@ from src.centrality import node_centralities
 
 
 def test_node_centralities_returns_ranked_metrics() -> None:
-    graph = nx.DiGraph([("A", "B"), ("B", "C"), ("A", "C")])
+    graph = nx.DiGraph([("A", "B"), ("A", "C"), ("A", "D"), ("B", "C")])
 
     report = node_centralities(graph)
 
@@ -22,7 +22,8 @@ def test_node_centralities_returns_ranked_metrics() -> None:
         "deg_total",
     ]
     assert report["deg_total"].is_monotonic_decreasing
-    assert report.set_index("node").loc["A", "deg_out"] == 2
+    assert report.iloc[0]["node"] == "A"
+    assert report.set_index("node").loc["A", "deg_out"] == 3
     assert report["pagerank"].sum() == pytest.approx(1.0)
 
 
