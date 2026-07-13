@@ -21,6 +21,7 @@ dependencies = [
     "pydantic>=2",
     "pydeck>=0.9",
     "PyYAML>=6.0",
+    "scipy>=1.11",
     "streamlit>=1.38",
 ]
 

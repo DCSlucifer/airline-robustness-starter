@@ -28,6 +28,7 @@ EXPECTED_DEPENDENCIES = {
     "pydantic",
     "pydeck",
     "pyyaml",
+    "scipy",
     "streamlit",
 }
 
