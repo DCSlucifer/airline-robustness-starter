@@ -1,0 +1,2 @@
+# Install the project plus the tools used by local and CI verification.
+-e .[dev]

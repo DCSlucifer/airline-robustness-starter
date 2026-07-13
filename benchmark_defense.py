@@ -3,11 +3,13 @@ Benchmark script for defense algorithm performance testing.
 
 Measures execution time and results of greedy_edge_addition on the full dataset.
 """
+
 import time
-import networkx as nx
+
+from src.data_io import load_airports, load_routes, merge_airports_routes
 from src.defenses import greedy_edge_addition
 from src.graph_build import build_digraph
-from src.data_io import load_airports, load_routes, merge_airports_routes
+
 
 def benchmark_defense():
     print("Loading data...")
@@ -26,6 +28,7 @@ def benchmark_defense():
     print(f"Added {len(log)} edges.")
     for entry in log:
         print(f"Step {entry['step']}: Added {entry['added_edges'][0]}")
+
 
 if __name__ == "__main__":
     benchmark_defense()

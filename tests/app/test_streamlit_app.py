@@ -1,0 +1,176 @@
+import json
+import re
+from pathlib import Path
+
+import networkx as nx
+from streamlit.testing.v1 import AppTest
+
+APP_PATH = Path(__file__).resolve().parents[2] / "src" / "app" / "streamlit_app.py"
+
+
+def _element(group, label):
+    return next(element for element in group if element.label == label)
+
+
+def _load_sample() -> AppTest:
+    app = AppTest.from_file(str(APP_PATH), default_timeout=60).run()
+    _element(app.text_input, "Airports").set_value("sample_airports.csv")
+    _element(app.text_input, "Routes").set_value("sample_routes.csv")
+    _element(app.button, "Load").click().run()
+    assert not app.exception
+    assert not any("fast_mode" in warning.value for warning in app.warning)
+    return app
+
+
+def _rendered_metric(app: AppTest, label: str) -> str | None:
+    pattern = re.compile(
+        rf'<div class="metric-label">{re.escape(label)}</div>'
+        r'<div class="metric-value">([^<]+)'
+    )
+    for markdown in app.markdown:
+        match = pattern.search(markdown.value)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _equal_size_graph(prefix: str) -> nx.DiGraph:
+    graph = nx.DiGraph()
+    for index in range(5):
+        graph.add_node(
+            f"{prefix}{index}",
+            name=f"{prefix}{index}",
+            lat=index / 10,
+            lon=index / 10,
+        )
+    graph.add_edges_from(
+        [
+            (f"{prefix}0", f"{prefix}1"),
+            (f"{prefix}1", f"{prefix}2"),
+            (f"{prefix}2", f"{prefix}3"),
+            (f"{prefix}3", f"{prefix}4"),
+            (f"{prefix}4", f"{prefix}0"),
+            (f"{prefix}0", f"{prefix}2"),
+            (f"{prefix}2", f"{prefix}4"),
+        ]
+    )
+    return graph
+
+
+def test_chained_attack_renders_the_full_chained_state() -> None:
+    app = _load_sample()
+    _element(app.number_input, "k").set_value(1)
+    _element(app.button, "Run Attack").click().run()
+    assert app.session_state.H_attack.number_of_nodes() == 4
+
+    _element(app.checkbox, "Chain attack from current replay state").check()
+    _element(app.button, "Run Attack").click().run()
+
+    assert not app.exception
+    assert app.session_state.G_base.number_of_nodes() == 4
+    assert app.session_state.H_attack.number_of_nodes() == 3
+    assert len(app.session_state.attack_log) == 1
+    assert _rendered_metric(app, "Nodes") == "3"
+
+
+def test_committing_an_empty_graph_does_not_restore_the_original() -> None:
+    app = _load_sample()
+    _element(app.number_input, "k").set_value(5)
+    _element(app.button, "Run Attack").click().run()
+    _element(app.button, "Commit current state as new baseline").click().run()
+    app.run()
+
+    assert not app.exception
+    assert app.session_state.G_base.number_of_nodes() == 0
+    assert _rendered_metric(app, "Nodes") == "0"
+
+
+def test_equal_size_graphs_do_not_share_stale_cluster_cache_entries() -> None:
+    app = _load_sample()
+    first = _equal_size_graph("A")
+    app.session_state.G = first
+    app.session_state.G_base = first
+    app.session_state.attack_log = []
+    app.session_state.defense_log = []
+    _element(app.radio, "Cluster").set_value("Geographic")
+    app.run()
+    assert not app.exception
+
+    replacement = _equal_size_graph("X")
+    app.session_state.G = replacement
+    app.session_state.G_base = replacement
+    app.session_state.attack_log = []
+    app.session_state.defense_log = []
+    app.run()
+
+    assert not app.exception
+    assert _rendered_metric(app, "Nodes") == "5"
+
+
+def test_cluster_aggregates_use_the_replayed_graph() -> None:
+    app = _load_sample()
+    graph = _equal_size_graph("A")
+    app.session_state.G = graph
+    app.session_state.G_base = graph
+    app.session_state.attack_log = [{"removed_node": "A0"}]
+    app.session_state.defense_log = []
+    app.session_state.atk_step = 1
+    _element(app.radio, "Cluster").set_value("Geographic")
+    app.run()
+
+    chart = app.get("deck_gl_json_chart")[0]
+    deck = json.loads(chart.proto.json)
+    cluster_rows = [
+        row for layer in deck["layers"] for row in layer.get("data", []) if "node_count" in row
+    ]
+
+    assert not app.exception
+    assert len(cluster_rows) == 1
+    assert cluster_rows[0]["node_count"] == 4
+    assert _rendered_metric(app, "Nodes") == "4"
+
+
+def test_load_and_commit_clear_stale_scenario_results() -> None:
+    app = _load_sample()
+    app.session_state.ai_result = {
+        "tool_name": "old_tool",
+        "arguments": {},
+        "explanation": "old answer",
+    }
+    app.session_state.rag_result = {"answer": "old answer", "sources": []}
+
+    _element(app.button, "Load").click().run()
+    assert app.session_state.ai_result is None
+    assert app.session_state.rag_result is None
+
+    app.session_state.ai_result = {
+        "tool_name": "old_tool",
+        "arguments": {},
+        "explanation": "old answer",
+    }
+    app.session_state.rag_result = {"answer": "old answer", "sources": []}
+    _element(app.number_input, "k").set_value(1)
+    _element(app.button, "Run Attack").click().run()
+    _element(app.button, "Commit current state as new baseline").click().run()
+
+    assert app.session_state.ai_result is None
+    assert app.session_state.rag_result is None
+
+
+def test_provider_keys_are_separate_and_missing_rag_index_disables_advisor() -> None:
+    app = _load_sample()
+
+    openai_key = _element(app.text_input, "OpenAI API key (What-If)")
+    openai_key.set_value("openai-test-key")
+    _element(app.selectbox, "Provider").set_value("anthropic")
+    app.run()
+
+    anthropic_key = _element(app.text_input, "Anthropic API key (What-If)")
+    advisor_key = _element(app.text_input, "OpenAI API key (Advisor)")
+    advisor_button = _element(app.button, "Ask Advisor")
+
+    assert anthropic_key.value == ""
+    assert advisor_key.value == ""
+    assert advisor_key.disabled is True
+    assert advisor_button.disabled is True
+    assert any("Knowledge index is not built" in warning.value for warning in app.warning)

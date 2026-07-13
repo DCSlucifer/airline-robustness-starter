@@ -4,16 +4,21 @@ Unit tests for attack simulation functions.
 Tests cover targeted node removal, random failures, edge betweenness attacks,
 geographic attacks, and community bridge attacks with various edge cases.
 """
-import pytest
+
+import random
 import warnings
+
 import networkx as nx
+import pytest
+
+import src.attacks as attacks
 from src.attacks import (
-    targeted_node_removal,
-    random_node_failures,
+    collective_influence_scores,
+    community_bridge_attack,
     edge_betweenness_attack,
     geographic_attack_radius,
-    community_bridge_attack,
-    collective_influence_scores,
+    random_node_failures,
+    targeted_node_removal,
 )
 
 
@@ -77,6 +82,11 @@ class TestTargetedNodeRemoval:
         assert H.number_of_nodes() == 0
         assert log == []
 
+    @pytest.mark.parametrize("interval", [0, -1])
+    def test_report_interval_must_be_positive(self, simple_digraph, interval):
+        with pytest.raises(ValueError, match="report_every_n must be positive"):
+            targeted_node_removal(simple_digraph, k=1, report_every_n=interval)
+
 
 class TestRandomNodeFailures:
     """Tests for random_node_failures function."""
@@ -99,8 +109,16 @@ class TestRandomNodeFailures:
         """Should produce same results with same seed."""
         reports1 = random_node_failures(simple_digraph, k=2, R=3, seed=42)
         reports2 = random_node_failures(simple_digraph, k=2, R=3, seed=42)
-        for r1, r2 in zip(reports1, reports2):
+        for r1, r2 in zip(reports1, reports2, strict=True):
             assert r1["removed_nodes"] == r2["removed_nodes"]
+
+    def test_does_not_mutate_process_random_state(self, simple_digraph):
+        random.seed(12345)
+        state = random.getstate()
+
+        random_node_failures(simple_digraph, k=2, R=2, seed=7)
+
+        assert random.getstate() == state
 
     def test_k_exceeds_nodes_capped(self, simple_digraph):
         """Should cap k at graph size and warn."""
@@ -133,14 +151,56 @@ class TestEdgeBetweennessAttack:
         original_edges = simple_digraph.number_of_edges()
         m = 2
         H, log = edge_betweenness_attack(simple_digraph, m=m, adaptive=False)
-        # Non-adaptive should also remove m edges
-        assert len(log) <= m
+        assert H.number_of_edges() == original_edges - m
+        assert len(log) == m
+
+    def test_nonadaptive_counts_reciprocal_arcs_separately(self):
+        graph = nx.DiGraph([("A", "B"), ("B", "A")])
+
+        result, log = edge_betweenness_attack(graph, m=2, adaptive=False, fast_mode=True)
+
+        assert result.number_of_edges() == 0
+        assert [entry["removed_edge"] for entry in log] == [("A", "B"), ("B", "A")]
+        assert log[-1]["report"] is not None
+
+    def test_nonadaptive_caps_at_directed_edge_count_and_reports_final_step(self):
+        graph = nx.DiGraph([("B", "A"), ("A", "B")])
+
+        result, log = edge_betweenness_attack(
+            graph, m=99, adaptive=False, fast_mode=True, report_every_n=10
+        )
+
+        assert result.number_of_edges() == 0
+        assert [entry["removed_edge"] for entry in log] == [("A", "B"), ("B", "A")]
+        assert log[0]["report"] is None
+        assert log[-1]["report"] is not None
 
     def test_m_zero_returns_unchanged(self, simple_digraph):
         """Should return unchanged graph for m=0."""
         H, log = edge_betweenness_attack(simple_digraph, m=0)
         assert H.number_of_edges() == simple_digraph.number_of_edges()
         assert log == []
+
+    def test_negative_m_raises(self, simple_digraph):
+        with pytest.raises(ValueError, match="m must be non-negative"):
+            edge_betweenness_attack(simple_digraph, m=-1)
+
+    @pytest.mark.parametrize(
+        ("kwargs", "message"),
+        [
+            ({"report_every_n": 0}, "report_every_n must be positive"),
+            ({"report_every_n": -1}, "report_every_n must be positive"),
+            ({"recompute_every": 0}, "recompute_every must be positive"),
+            ({"recompute_every": -1}, "recompute_every must be positive"),
+            ({"k_samples": 0}, "k_samples must be positive"),
+            ({"k_samples": -1}, "k_samples must be positive"),
+        ],
+    )
+    def test_sampling_and_recompute_controls_must_be_positive(
+        self, simple_digraph, kwargs, message
+    ):
+        with pytest.raises(ValueError, match=message):
+            edge_betweenness_attack(simple_digraph, m=1, **kwargs)
 
 
 class TestGeographicAttackRadius:
@@ -158,6 +218,39 @@ class TestGeographicAttackRadius:
         H, info = geographic_attack_radius(simple_digraph, center=(0.0, 0.0), radius_km=1000000)
         assert H.number_of_nodes() == 0
 
+    def test_zero_radius_removes_node_at_exact_center(self, simple_digraph):
+        result, info = geographic_attack_radius(simple_digraph, center=(0.0, 0.0), radius_km=0.0)
+
+        assert "AAA" in info["removed_nodes"]
+        assert "AAA" not in result
+
+    def test_fast_mode_is_forwarded_to_report(self, monkeypatch, simple_digraph):
+        recorded = []
+        monkeypatch.setattr(
+            attacks,
+            "topological_report",
+            lambda _graph, *, fast_mode: recorded.append(fast_mode) or {"fast": fast_mode},
+        )
+
+        _result, info = geographic_attack_radius(
+            simple_digraph, center=(0.0, 0.0), radius_km=1.0, fast_mode=True
+        )
+
+        assert recorded == [True]
+        assert info["report"] == {"fast": True}
+
+    @pytest.mark.parametrize("radius", [-1.0, float("nan"), float("inf")])
+    def test_invalid_radius_raises(self, simple_digraph, radius):
+        with pytest.raises(ValueError, match="radius_km must be a finite non-negative value"):
+            geographic_attack_radius(simple_digraph, center=(0.0, 0.0), radius_km=radius)
+
+    @pytest.mark.parametrize(
+        "center", [(float("nan"), 0.0), (float("inf"), 0.0), (91.0, 0.0), (0.0, 181.0), (0.0,)]
+    )
+    def test_invalid_center_raises(self, simple_digraph, center):
+        with pytest.raises(ValueError, match="center"):
+            geographic_attack_radius(simple_digraph, center=center, radius_km=10.0)
+
 
 class TestCollectiveInfluenceScores:
     """Tests for collective_influence_scores function."""
@@ -171,3 +264,126 @@ class TestCollectiveInfluenceScores:
         """Should handle empty graph."""
         scores = collective_influence_scores(empty_digraph)
         assert scores == {}
+
+    def test_negative_radius_raises(self, simple_digraph):
+        with pytest.raises(ValueError, match="l must be non-negative"):
+            collective_influence_scores(simple_digraph, l=-1)
+
+
+def test_large_graph_betweenness_ranking_uses_deterministic_seed(monkeypatch):
+    graph = nx.DiGraph()
+    graph.add_nodes_from(range(501))
+    recorded = {}
+
+    def fake_betweenness(graph, *, k, seed):
+        recorded.update(k=k, seed=seed)
+        return {node: float(node) for node in graph}
+
+    monkeypatch.setattr(attacks.nx, "betweenness_centrality", fake_betweenness)
+
+    ranking = attacks._rank_nodes(graph, metric="betweenness")
+
+    assert recorded == {"k": 200, "seed": 42}
+    assert ranking[0] == 500
+
+
+def test_rank_nodes_breaks_equal_scores_stably():
+    graph = nx.DiGraph()
+    graph.add_nodes_from(["B", "A"])
+
+    assert attacks._rank_nodes(graph, metric="degree") == ["A", "B"]
+
+
+def test_large_edge_attack_uses_deterministic_sample(monkeypatch):
+    graph = nx.DiGraph()
+    graph.add_nodes_from(range(501))
+    graph.add_edge(0, 500)
+    recorded = {}
+
+    def fake_edge_betweenness(graph, *, k, normalized, seed):
+        recorded.update(k=k, normalized=normalized, seed=seed)
+        return {(0, 500): 1.0}
+
+    monkeypatch.setattr(attacks.nx, "edge_betweenness_centrality", fake_edge_betweenness)
+
+    result, log = edge_betweenness_attack(graph, m=1, adaptive=False, fast_mode=True)
+
+    assert recorded == {"k": 200, "normalized": True, "seed": 42}
+    assert log[0]["removed_edge"] == (0, 500)
+    assert not result.has_edge(0, 500)
+
+
+def test_community_bridge_attack_validates_negative_m(simple_digraph):
+    with pytest.raises(ValueError, match="m must be non-negative"):
+        community_bridge_attack(simple_digraph, m=-1)
+
+
+@pytest.mark.parametrize("sample_count", [0, -1])
+def test_community_bridge_attack_validates_sample_count(simple_digraph, sample_count):
+    with pytest.raises(ValueError, match="k_samples must be positive"):
+        community_bridge_attack(simple_digraph, m=1, k_samples=sample_count)
+
+
+def test_community_bridge_zero_is_a_noop_without_detection(monkeypatch, simple_digraph):
+    report_modes = []
+
+    def fail_if_called(_graph):
+        raise AssertionError("community detection should not run")
+
+    monkeypatch.setattr(nx.algorithms.community, "label_propagation_communities", fail_if_called)
+    monkeypatch.setattr(
+        attacks,
+        "topological_report",
+        lambda _graph, *, fast_mode: report_modes.append(fast_mode) or {"fast": fast_mode},
+    )
+
+    result, info = community_bridge_attack(simple_digraph, m=0, fast_mode=False)
+
+    assert nx.utils.graphs_equal(result, simple_digraph)
+    assert info["removed_edges"] == []
+    assert info["report"] == {"fast": False}
+    assert report_modes == [False]
+
+
+def test_community_bridge_attack_samples_large_graph_deterministically(monkeypatch):
+    graph = nx.DiGraph()
+    graph.add_nodes_from(range(501))
+    graph.add_edge(0, 500)
+    recorded = {}
+
+    monkeypatch.setattr(
+        nx.algorithms.community,
+        "label_propagation_communities",
+        lambda _graph: [set(range(500)), {500}],
+    )
+
+    def fake_edge_betweenness(graph, *, k, normalized, seed):
+        recorded.update(k=k, normalized=normalized, seed=seed)
+        return {(0, 500): 1.0}
+
+    monkeypatch.setattr(attacks.nx, "edge_betweenness_centrality", fake_edge_betweenness)
+
+    result, info = community_bridge_attack(graph, m=1)
+
+    assert recorded == {"k": 200, "normalized": True, "seed": 42}
+    assert info["removed_edges"] == [(0, 500)]
+    assert not result.has_edge(0, 500)
+
+
+def test_community_bridge_attack_breaks_score_ties_deterministically(monkeypatch):
+    graph = nx.DiGraph()
+    graph.add_edges_from([("B", "D"), ("A", "C")])
+    monkeypatch.setattr(
+        nx.algorithms.community,
+        "label_propagation_communities",
+        lambda _graph: [{"D", "C"}, {"B", "A"}],
+    )
+    monkeypatch.setattr(
+        attacks.nx,
+        "edge_betweenness_centrality",
+        lambda _graph, *, normalized: {("B", "D"): 1.0, ("A", "C"): 1.0},
+    )
+
+    _result, info = community_bridge_attack(graph, m=1)
+
+    assert info["removed_edges"] == [("A", "C")]

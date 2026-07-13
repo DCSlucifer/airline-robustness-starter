@@ -4,11 +4,13 @@ Pytest configuration and shared fixtures for airline robustness tests.
 This module provides reusable test fixtures for building graphs of various
 sizes and configurations to be used across test modules.
 """
-import pytest
-import networkx as nx
-import pandas as pd
+
 import sys
 from pathlib import Path
+
+import networkx as nx
+import pandas as pd
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -18,31 +20,81 @@ if str(ROOT) not in sys.path:
 @pytest.fixture
 def sample_airports():
     """Returns a DataFrame with 5 sample airports."""
-    return pd.DataFrame([
-        {"airport_id": 1, "name": "Alpha", "city": "A-City", "country": "Land", "iata": "AAA", "icao": "AAAA", "lat": 0.0, "lon": 0.0},
-        {"airport_id": 2, "name": "Beta", "city": "B-City", "country": "Land", "iata": "BBB", "icao": "BBBB", "lat": 1.0, "lon": 0.0},
-        {"airport_id": 3, "name": "Gamma", "city": "C-City", "country": "Land", "iata": "CCC", "icao": "CCCC", "lat": 0.0, "lon": 1.0},
-        {"airport_id": 4, "name": "Delta", "city": "D-City", "country": "Land", "iata": "DDD", "icao": "DDDD", "lat": 1.0, "lon": 1.0},
-        {"airport_id": 5, "name": "Epsilon", "city": "E-City", "country": "Land", "iata": "EEE", "icao": "EEEE", "lat": 2.0, "lon": 2.0},
-    ])
+    return pd.DataFrame(
+        [
+            {
+                "airport_id": 1,
+                "name": "Alpha",
+                "city": "A-City",
+                "country": "Land",
+                "iata": "AAA",
+                "icao": "AAAA",
+                "lat": 0.0,
+                "lon": 0.0,
+            },
+            {
+                "airport_id": 2,
+                "name": "Beta",
+                "city": "B-City",
+                "country": "Land",
+                "iata": "BBB",
+                "icao": "BBBB",
+                "lat": 1.0,
+                "lon": 0.0,
+            },
+            {
+                "airport_id": 3,
+                "name": "Gamma",
+                "city": "C-City",
+                "country": "Land",
+                "iata": "CCC",
+                "icao": "CCCC",
+                "lat": 0.0,
+                "lon": 1.0,
+            },
+            {
+                "airport_id": 4,
+                "name": "Delta",
+                "city": "D-City",
+                "country": "Land",
+                "iata": "DDD",
+                "icao": "DDDD",
+                "lat": 1.0,
+                "lon": 1.0,
+            },
+            {
+                "airport_id": 5,
+                "name": "Epsilon",
+                "city": "E-City",
+                "country": "Land",
+                "iata": "EEE",
+                "icao": "EEEE",
+                "lat": 2.0,
+                "lon": 2.0,
+            },
+        ]
+    )
 
 
 @pytest.fixture
 def sample_routes():
     """Returns a DataFrame with sample routes forming a connected graph."""
-    return pd.DataFrame([
-        {"source_iata": "AAA", "dest_iata": "BBB"},
-        {"source_iata": "BBB", "dest_iata": "CCC"},
-        {"source_iata": "CCC", "dest_iata": "DDD"},
-        {"source_iata": "DDD", "dest_iata": "EEE"},
-        {"source_iata": "AAA", "dest_iata": "DDD"},  # Shortcut edge
-    ])
+    return pd.DataFrame(
+        [
+            {"source_iata": "AAA", "dest_iata": "BBB"},
+            {"source_iata": "BBB", "dest_iata": "CCC"},
+            {"source_iata": "CCC", "dest_iata": "DDD"},
+            {"source_iata": "DDD", "dest_iata": "EEE"},
+            {"source_iata": "AAA", "dest_iata": "DDD"},  # Shortcut edge
+        ]
+    )
 
 
 @pytest.fixture
 def simple_digraph(sample_airports, sample_routes):
     """Builds a simple DiGraph from sample data."""
     from src.graph_build import build_digraph
+
     return build_digraph(sample_airports, sample_routes, add_distance=True)
 
 

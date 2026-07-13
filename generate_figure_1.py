@@ -1,21 +1,19 @@
-
-import matplotlib.pyplot as plt
-import networkx as nx
-import pandas as pd
 import os
 import random
-import yaml
-from pathlib import Path
-import numpy as np
-
 import sys
+
+import matplotlib.pyplot as plt
+import numpy as np
+import yaml
+
 sys.path.append(os.getcwd())
 
+from src.attacks import targeted_node_removal
 from src.data_io import load_airports, load_routes, merge_airports_routes
 from src.graph_build import build_digraph
+
 # topological_report is fast enough if fast_mode=True
 from src.metrics import topological_report
-from src.attacks import targeted_node_removal
 
 # --- CONFIGURATION ---
 CONFIG_PATH = "config/default.yaml"
@@ -24,9 +22,10 @@ IMG_NAME = "Figure_1_GWCC_Robustness_HighRes.png"
 REMOVAL_FRACTION = 0.20  # Increased to 20% to show full collapse
 STEPS = 20  # Increased resolution for smoother curve
 
+
 def build_graph():
     print("Loading graph data...", flush=True)
-    with open(CONFIG_PATH, "r") as f:
+    with open(CONFIG_PATH) as f:
         cfg = yaml.safe_load(f)
 
     airports = load_airports(cfg["airports_csv"])
@@ -36,8 +35,10 @@ def build_graph():
     print(f"Graph loaded: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges", flush=True)
     return G, cfg
 
+
 def get_gwcc_frac(G):
     return topological_report(G, fast_mode=True)["gwcc_frac"]
+
 
 def run_random_attack(G, k, num_points):
     print("Simulating Random Failures...", flush=True)
@@ -48,7 +49,7 @@ def run_random_attack(G, k, num_points):
 
     aggregated_results = {}
 
-    for r in range(runs):
+    for _run in range(runs):
         H = G.copy()
         nodes = list(H.nodes())
         random.shuffle(nodes)
@@ -70,18 +71,14 @@ def run_random_attack(G, k, num_points):
 
     return x_values, y_values
 
+
 def run_targeted_attack(G, k, metric, name, num_points, adaptive=True):
     print(f"Simulating Targeted Attack ({name}, adaptive={adaptive})...", flush=True)
 
     report_interval = max(1, k // num_points)
 
     H, log = targeted_node_removal(
-        G,
-        k=k,
-        metric=metric,
-        adaptive=adaptive,
-        fast_mode=True,
-        report_every_n=report_interval
+        G, k=k, metric=metric, adaptive=adaptive, fast_mode=True, report_every_n=report_interval
     )
 
     x_values = [0.0]
@@ -98,6 +95,7 @@ def run_targeted_attack(G, k, metric, name, num_points, adaptive=True):
 
     return x_values, y_values
 
+
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -105,8 +103,10 @@ def main():
     N = G.number_of_nodes()
     k = int(N * REMOVAL_FRACTION)
 
-    print(f"Simulating removal of {k} nodes ({REMOVAL_FRACTION*100}%)")
-    print("NOTE: CI Adaptive calculation is computationally intensive. This may take a few minutes...")
+    print(f"Simulating removal of {k} nodes ({REMOVAL_FRACTION * 100}%)")
+    print(
+        "NOTE: CI Adaptive calculation is computationally intensive. This may take a few minutes..."
+    )
 
     # 1. Random
     x_rand, y_rand = run_random_attack(G, k, STEPS)
@@ -121,19 +121,44 @@ def main():
     print("Plotting results...", flush=True)
     plt.figure(figsize=(10, 6))
 
-    plt.plot(x_rand, y_rand, label='Random Failure', color='green', marker='o', markersize=4, linestyle='-')
-    plt.plot(x_deg, y_deg, label='Targeted (Degree - Adaptive)', color='blue', marker='^', markersize=4, linestyle='-')
-    plt.plot(x_ci, y_ci, label='Targeted (CI - Adaptive)', color='red', marker='x', markersize=4, linestyle='-')
+    plt.plot(
+        x_rand,
+        y_rand,
+        label="Random Failure",
+        color="green",
+        marker="o",
+        markersize=4,
+        linestyle="-",
+    )
+    plt.plot(
+        x_deg,
+        y_deg,
+        label="Targeted (Degree - Adaptive)",
+        color="blue",
+        marker="^",
+        markersize=4,
+        linestyle="-",
+    )
+    plt.plot(
+        x_ci,
+        y_ci,
+        label="Targeted (CI - Adaptive)",
+        color="red",
+        marker="x",
+        markersize=4,
+        linestyle="-",
+    )
 
-    plt.title('GWCC Robustness: Random vs Targeted (Degree, CI)', fontsize=14)
-    plt.xlabel('Fraction of Nodes Removed (f)', fontsize=12)
-    plt.ylabel('GWCC Fraction', fontsize=12)
+    plt.title("GWCC Robustness: Random vs Targeted (Degree, CI)", fontsize=14)
+    plt.xlabel("Fraction of Nodes Removed (f)", fontsize=12)
+    plt.ylabel("GWCC Fraction", fontsize=12)
     plt.legend(fontsize=11)
-    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.grid(True, linestyle="--", alpha=0.7)
 
     save_path = os.path.join(OUTPUT_DIR, IMG_NAME)
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
     print(f"Figure saved to: {save_path}", flush=True)
+
 
 if __name__ == "__main__":
     main()

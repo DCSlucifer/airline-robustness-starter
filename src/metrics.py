@@ -6,13 +6,13 @@ robustness, including Giant Connected Components (Weakly/Strongly), Average
 Shortest Path Length (ASPL), Diameter, and reachability within a specific
 number of hops.
 """
+
 from __future__ import annotations
-from typing import Any, Dict, Set, Tuple
 
 import random
-import networkx as nx
-import pandas as pd
+from typing import Any
 
+import networkx as nx
 
 __all__ = [
     "gwcc",
@@ -22,7 +22,8 @@ __all__ = [
     "topological_report",
 ]
 
-def gwcc(G: nx.DiGraph) -> Set[Any]:
+
+def gwcc(G: nx.DiGraph) -> set[Any]:
     """
     Identifies the Giant Weakly Connected Component (GWCC) of the graph.
 
@@ -44,7 +45,8 @@ def gwcc(G: nx.DiGraph) -> Set[Any]:
     # Return the largest one by node count
     return max(comps, key=len) if comps else set()
 
-def gscc(G: nx.DiGraph) -> Set[Any]:
+
+def gscc(G: nx.DiGraph) -> set[Any]:
     """
     Identifies the Giant Strongly Connected Component (GSCC) of the graph.
 
@@ -65,6 +67,7 @@ def gscc(G: nx.DiGraph) -> Set[Any]:
 
     # Return the largest one by node count
     return max(comps, key=len) if comps else set()
+
 
 def _gwcc_undirected(G: nx.DiGraph) -> nx.Graph:
     """Undirected view of the GWCC (used for efficiency metrics)."""
@@ -128,7 +131,9 @@ def diameter_two_sweep_on_gwcc(G: nx.DiGraph, sweeps: int = 4, seed: int = 42) -
     return int(best)
 
 
-def percent_od_within_hops_sampled(G: nx.DiGraph, H: int = 4, samples: int = 200, seed: int = 42) -> float:
+def percent_od_within_hops_sampled(
+    G: nx.DiGraph, H: int = 4, samples: int = 200, seed: int = 42
+) -> float:
     """
     Approximate percent OD pairs within H hops using sampled sources on GWCC.
     """
@@ -148,7 +153,7 @@ def percent_od_within_hops_sampled(G: nx.DiGraph, H: int = 4, samples: int = 200
     return (count / total) if total else 0.0
 
 
-def aspl_and_diameter_on_gwcc(G: nx.DiGraph) -> Tuple[float, int]:
+def aspl_and_diameter_on_gwcc(G: nx.DiGraph) -> tuple[float, int]:
     """
     Calculates the Average Shortest Path Length (ASPL) and Diameter on the GWCC.
 
@@ -179,6 +184,7 @@ def aspl_and_diameter_on_gwcc(G: nx.DiGraph) -> Tuple[float, int]:
         diameter = 0
 
     return aspl, diameter
+
 
 def percent_od_within_hops(G: nx.DiGraph, H: int = 4) -> float:
     """
@@ -213,7 +219,8 @@ def percent_od_within_hops(G: nx.DiGraph, H: int = 4) -> float:
 
     return count / total
 
-def topological_report(G: nx.DiGraph, H: int = 4, fast_mode: bool = False) -> Dict[str, Any]:
+
+def topological_report(G: nx.DiGraph, H: int = 4, fast_mode: bool = False) -> dict[str, Any]:
     """
     Generates a comprehensive report of topological metrics for the graph.
 
@@ -244,7 +251,6 @@ def topological_report(G: nx.DiGraph, H: int = 4, fast_mode: bool = False) -> Di
     else:
         aspl, diam = aspl_and_diameter_on_gwcc(G)
         pctH = percent_od_within_hops(G, H=H)
-
 
     return {
         "n_nodes": n,
