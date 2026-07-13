@@ -1,4 +1,6 @@
-from src.ai.llm_client import ClaudeClient, FakeLLMClient
+import pytest
+
+from src.ai.llm_client import ClaudeClient, FakeLLMClient, LLMResponseError
 from src.ai.prompts import render_explain_prompt
 from src.ai.schemas import ToolSelection
 
@@ -79,3 +81,29 @@ def test_claude_client_chat_returns_text():
     response = _StubResponse([_StubBlock("text", text="Hello from chat.")])
     client = ClaudeClient(_client=_StubAnthropic(response))
     assert client.chat("sys", "user") == "Hello from chat."
+
+
+@pytest.mark.parametrize(
+    "content",
+    [[], [_StubBlock("text", text="not a tool")], [_StubBlock("refusal")]],
+)
+def test_claude_router_rejects_missing_or_refused_tool_calls(content):
+    client = ClaudeClient(_client=_StubAnthropic(_StubResponse(content)))
+
+    with pytest.raises(LLMResponseError):
+        client.select_tool("q", tools=[])
+
+
+def test_claude_router_rejects_non_object_arguments():
+    response = _StubResponse([_StubBlock("tool_use", name="defend", input="not-an-object")])
+    client = ClaudeClient(_client=_StubAnthropic(response))
+
+    with pytest.raises(LLMResponseError, match="arguments were not an object"):
+        client.select_tool("q", tools=[])
+
+
+def test_claude_chat_rejects_empty_text():
+    client = ClaudeClient(_client=_StubAnthropic(_StubResponse([_StubBlock("text", text=" ")])))
+
+    with pytest.raises(LLMResponseError, match="non-empty text"):
+        client.chat("system", "user")

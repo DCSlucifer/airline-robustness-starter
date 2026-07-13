@@ -1,5 +1,9 @@
+import pytest
+
+import src.ai.eval.runner as runner
 from src.ai.eval.golden_set import GOLDEN_SET
-from src.ai.eval.runner import evaluate, format_report
+from src.ai.eval.runner import evaluate, format_report, make_eval_client
+from src.ai.llm_client import LLMConfigurationError
 from src.ai.schemas import ToolSelection
 
 
@@ -67,3 +71,39 @@ def test_format_report_contains_accuracy():
     text = format_report(evaluate(ScriptedClient(_perfect_mapping(GOLDEN_SET)), GOLDEN_SET))
     assert "Tool-selection accuracy" in text
     assert "100.0%" in text
+
+
+def test_make_eval_client_requires_the_selected_provider_key():
+    with pytest.raises(LLMConfigurationError, match="OPENAI_API_KEY"):
+        make_eval_client(environ={})
+
+    with pytest.raises(LLMConfigurationError, match="ANTHROPIC_API_KEY"):
+        make_eval_client("anthropic", environ={})
+
+
+def test_make_eval_client_honors_provider_and_key(monkeypatch):
+    recorded = {}
+    sentinel = object()
+
+    def fake_make_client(provider, *, api_key):
+        recorded.update(provider=provider, api_key=api_key)
+        return sentinel
+
+    monkeypatch.setattr(runner, "make_client", fake_make_client)
+
+    result = make_eval_client(
+        environ={"LLM_PROVIDER": "claude", "ANTHROPIC_API_KEY": "anthropic-test-key"}
+    )
+
+    assert result is sentinel
+    assert recorded == {"provider": "anthropic", "api_key": "anthropic-test-key"}
+
+
+def test_eval_cli_fails_cleanly_without_live_key(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+
+    with pytest.raises(SystemExit) as exc_info:
+        runner.main([])
+
+    assert exc_info.value.code == 2

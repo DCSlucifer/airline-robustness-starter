@@ -1,4 +1,6 @@
-from src.ai.llm_client import OpenAIClient, _to_openai_tools
+import pytest
+
+from src.ai.llm_client import LLMResponseError, OpenAIClient, _to_openai_tools
 from src.ai.schemas import ToolSelection
 
 
@@ -104,3 +106,36 @@ def test_openai_client_chat_returns_content():
     response = _StubCompletion([_StubChoice(_StubMessage(content="Hello chat."))])
     client = OpenAIClient(_client=_StubOpenAI(response))
     assert client.chat("sys", "user") == "Hello chat."
+
+
+def test_openai_router_rejects_empty_choices():
+    client = OpenAIClient(_client=_StubOpenAI(_StubCompletion([])))
+
+    with pytest.raises(LLMResponseError, match="no choices"):
+        client.select_tool("q", tools=_SAMPLE_SPECS)
+
+
+def test_openai_router_rejects_missing_tool_call():
+    response = _StubCompletion([_StubChoice(_StubMessage(content="no tool", tool_calls=[]))])
+    client = OpenAIClient(_client=_StubOpenAI(response))
+
+    with pytest.raises(LLMResponseError, match="did not include a tool call"):
+        client.select_tool("q", tools=_SAMPLE_SPECS)
+
+
+def test_openai_router_rejects_invalid_argument_json():
+    function = _StubFunction("geographic_attack", "{invalid")
+    response = _StubCompletion([_StubChoice(_StubMessage(tool_calls=[_StubToolCall(function)]))])
+    client = OpenAIClient(_client=_StubOpenAI(response))
+
+    with pytest.raises(LLMResponseError, match="invalid JSON"):
+        client.select_tool("q", tools=_SAMPLE_SPECS)
+
+
+def test_openai_chat_rejects_refusal_without_echoing_provider_shape():
+    message = _StubMessage(content=None)
+    message.refusal = "blocked"
+    client = OpenAIClient(_client=_StubOpenAI(_StubCompletion([_StubChoice(message)])))
+
+    with pytest.raises(LLMResponseError, match="refused"):
+        client.chat("system", "user")

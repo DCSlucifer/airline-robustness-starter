@@ -1,7 +1,7 @@
 import pytest
 
-from src.ai.factory import DEFAULT_PROVIDER, make_client
-from src.ai.llm_client import ClaudeClient, OpenAIClient
+from src.ai.factory import DEFAULT_PROVIDER, make_client, resolve_provider
+from src.ai.llm_client import ClaudeClient, LLMConfigurationError, OpenAIClient
 
 
 def test_default_provider_is_openai():
@@ -33,5 +33,12 @@ def test_explicit_arg_overrides_env(monkeypatch):
 
 
 def test_unknown_provider_raises():
-    with pytest.raises(ValueError):
+    with pytest.raises(LLMConfigurationError):
         make_client("grok", _client=object())
+
+
+def test_resolve_provider_normalizes_alias_and_whitespace(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "  CLAUDE  ")
+
+    assert resolve_provider() == "anthropic"
+    assert resolve_provider(" OpenAI ") == "openai"
