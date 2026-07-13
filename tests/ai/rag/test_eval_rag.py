@@ -6,6 +6,7 @@ from src.ai.rag.eval_rag import (
     RetrievalReport,
     evaluate_retrieval,
     format_report,
+    main,
 )
 from src.ai.rag.store import VectorStore
 
@@ -42,3 +43,10 @@ def test_golden_questions_nonempty_and_typed():
     assert all(
         isinstance(c, RetrievalCase) and c.question and c.expected_title for c in GOLDEN_QUESTIONS
     )
+
+
+def test_live_eval_requires_explicit_openai_key(monkeypatch, tmp_path, capsys):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    assert main(["--index", str(tmp_path / "missing.npz")]) == 2
+    assert "OPENAI_API_KEY is required" in capsys.readouterr().err

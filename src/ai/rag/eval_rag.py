@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
+import os
+import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from .embedder import Embedder
 from .store import VectorStore
@@ -71,16 +76,34 @@ GOLDEN_QUESTIONS: list[RetrievalCase] = [
 ]
 
 
-def main() -> None:  # pragma: no cover - needs OPENAI_API_KEY and a built index
-    import os
-
+def main(argv: Sequence[str] | None = None) -> int:  # pragma: no cover - live opt-in
     from .embedder import OpenAIEmbedder
     from .index import INDEX_PATH
+    from .store import IndexFormatError
 
-    embedder = OpenAIEmbedder(api_key=os.environ.get("OPENAI_API_KEY"))
-    store = VectorStore.load(INDEX_PATH)
-    print(format_report(evaluate_retrieval(embedder, store, GOLDEN_QUESTIONS, k=4), k=4))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--index", type=Path, default=INDEX_PATH)
+    parser.add_argument("--model", default="text-embedding-3-small")
+    parser.add_argument("--k", type=int, default=4)
+    args = parser.parse_args(argv)
+    if args.k <= 0:
+        parser.error("--k must be positive")
+
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        print("error: OPENAI_API_KEY is required for retrieval evaluation", file=sys.stderr)
+        return 2
+
+    try:
+        store = VectorStore.load(args.index, expected_model=args.model, require_nonempty=True)
+        embedder = OpenAIEmbedder(api_key=api_key, model=args.model)
+        report = evaluate_retrieval(embedder, store, GOLDEN_QUESTIONS, k=args.k)
+    except (IndexFormatError, OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(format_report(report, k=args.k))
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover
-    main()
+    raise SystemExit(main())

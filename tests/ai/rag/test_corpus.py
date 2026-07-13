@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from src.ai.rag.corpus import Article, _api_url, fetch_corpus, parse_extract
 
 
@@ -44,3 +46,39 @@ def test_fetch_corpus_caches_files_and_manifest(tmp_path):
     body = (tmp_path / "network-science.md").read_text(encoding="utf-8")
     assert "Net body." in body
     assert "oldid=11" in body
+    assert "fetched:" not in body
+    assert manifest[0]["fetched_at"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"query": {"pages": {}}},
+        _api_json("Missing", "", 1),
+        _api_json("No revision", "Body", None),
+    ],
+)
+def test_parse_extract_rejects_missing_or_unpinned_pages(payload):
+    with pytest.raises(ValueError):
+        parse_extract(payload)
+
+
+def test_fetch_corpus_does_not_write_partial_snapshot(tmp_path):
+    articles = [Article("Good"), Article("Bad")]
+
+    def fake_fetcher(url):
+        if "Good" in url:
+            return json.dumps(_api_json("Good", "Body", 1))
+        return json.dumps(_api_json("Bad", "", 2))
+
+    with pytest.raises(ValueError):
+        fetch_corpus(articles, kb_dir=tmp_path, fetcher=fake_fetcher)
+
+    assert not list(tmp_path.glob("*.md"))
+    assert not (tmp_path / "manifest.json").exists()
+
+
+def test_fetch_corpus_rejects_empty_article_list(tmp_path):
+    with pytest.raises(ValueError, match="at least one"):
+        fetch_corpus([], kb_dir=tmp_path)

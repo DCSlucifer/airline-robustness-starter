@@ -1,5 +1,7 @@
+import pytest
+
 from src.ai.llm_client import FakeLLMClient
-from src.ai.rag.advisor import RagAnswer, answer, render_context
+from src.ai.rag.advisor import CitationValidationError, RagAnswer, answer, render_context
 from src.ai.rag.chunker import Chunk
 from src.ai.rag.embedder import FakeEmbedder
 from src.ai.rag.store import Hit, VectorStore
@@ -100,3 +102,22 @@ def test_citation_numbers_align_with_deduped_sources():
     assert "[1]" in client.last_user
     assert "[2]" in client.last_user
     assert "[3]" not in client.last_user
+
+
+@pytest.mark.parametrize("text", ["answer without citation", "invalid [99]"])
+def test_answer_rejects_ungrounded_citations(text):
+    embedder = FakeEmbedder(dim=16)
+
+    with pytest.raises(CitationValidationError):
+        answer("question", _client(text), embedder, _store(embedder), k=2)
+
+
+@pytest.mark.parametrize("question", ["", "   "])
+def test_answer_rejects_empty_question(question):
+    with pytest.raises(ValueError, match="must not be empty"):
+        answer(question, _client("unused [1]"), FakeEmbedder(), VectorStore())
+
+
+def test_render_context_requires_matching_number_count():
+    with pytest.raises(ValueError):
+        render_context([Hit(0.9, "a", {"title": "A"})], [])
