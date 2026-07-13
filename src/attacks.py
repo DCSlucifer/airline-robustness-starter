@@ -8,6 +8,8 @@ edge removal based on betweenness, and geographic attacks.
 
 from __future__ import annotations
 
+import math
+import random
 import warnings
 from typing import Any
 
@@ -19,12 +21,25 @@ __all__ = [
     "geographic_attack_radius",
     "community_bridge_attack",
 ]
-import random
 
 import networkx as nx
 
 from .geo import nodes_within_radius_km
 from .metrics import topological_report
+
+_CENTRALITY_SAMPLE_THRESHOLD = 500
+_CENTRALITY_SAMPLE_SIZE = 200
+_CENTRALITY_SEED = 42
+
+
+def _node_sort_key(node: Any) -> tuple[str, str, str]:
+    """Return a stable, cross-type key for deterministic tie-breaking."""
+    node_type = type(node)
+    return node_type.__module__, node_type.__qualname__, repr(node)
+
+
+def _edge_sort_key(edge: tuple[Any, Any]) -> tuple[tuple[str, str, str], tuple[str, str, str]]:
+    return _node_sort_key(edge[0]), _node_sort_key(edge[1])
 
 
 def collective_influence_scores(G: nx.Graph, l: int = 2) -> dict[Any, float]:  # noqa: E741
@@ -42,6 +57,9 @@ def collective_influence_scores(G: nx.Graph, l: int = 2) -> dict[Any, float]:  #
     Returns:
         A dictionary mapping node IDs to their CI scores.
     """
+    if l < 0:
+        raise ValueError("l must be non-negative")
+
     # We operate on the undirected view of the graph because robustness metrics
     # like Giant Connected Component (GCC) are typically defined for undirected connectivity.
     U = G.to_undirected()
@@ -97,9 +115,9 @@ def _rank_nodes(G: nx.DiGraph, metric: str = "degree", l_ci: int = 2) -> list[An
     elif metric == "betweenness":
         # Use approximate betweenness for large graphs (>500 nodes)
         n_nodes = G.number_of_nodes()
-        if n_nodes > 500:
-            k_samples = min(200, n_nodes)
-            scores = nx.betweenness_centrality(G, k=k_samples)
+        if n_nodes > _CENTRALITY_SAMPLE_THRESHOLD:
+            k_samples = min(_CENTRALITY_SAMPLE_SIZE, n_nodes)
+            scores = nx.betweenness_centrality(G, k=k_samples, seed=_CENTRALITY_SEED)
         else:
             scores = nx.betweenness_centrality(G)
     elif metric == "pagerank":
@@ -110,7 +128,13 @@ def _rank_nodes(G: nx.DiGraph, metric: str = "degree", l_ci: int = 2) -> list[An
         raise ValueError(f"Unknown metric: {metric}")
 
     # Sort nodes by score descending
-    return [n for n, _ in sorted(scores.items(), key=lambda kv: kv[1], reverse=True)]
+    return [
+        n
+        for n, _ in sorted(
+            scores.items(),
+            key=lambda item: (-item[1], _node_sort_key(item[0])),
+        )
+    ]
 
 
 def targeted_node_removal(
@@ -142,6 +166,9 @@ def targeted_node_removal(
     """
     H = G.copy()
     log = []
+
+    if report_every_n <= 0:
+        raise ValueError("report_every_n must be positive")
 
     # Input validation
     if k <= 0:
@@ -235,12 +262,12 @@ def random_node_failures(
         )
         k = len(nodes)
 
-    random.seed(seed)
+    rng = random.Random(seed)
     reports = []
 
     for r in range(R):
         # Randomly sample k nodes to fail
-        sample = random.sample(nodes, min(k, len(nodes)))
+        sample = rng.sample(nodes, min(k, len(nodes)))
         H = G.copy()
         H.remove_nodes_from(sample)
         reports.append(
@@ -286,39 +313,56 @@ def edge_betweenness_attack(
     H = G.copy()
     log: list[dict] = []
 
-    if m <= 0 or H.number_of_edges() == 0:
+    if m < 0:
+        raise ValueError("m must be non-negative")
+    if report_every_n <= 0:
+        raise ValueError("report_every_n must be positive")
+    if recompute_every <= 0:
+        raise ValueError("recompute_every must be positive")
+    if k_samples is not None and k_samples <= 0:
+        raise ValueError("k_samples must be positive when provided")
+
+    if m == 0 or H.number_of_edges() == 0:
         return H, log
 
     m = min(m, H.number_of_edges())
 
     def compute_scores() -> dict[tuple[Any, Any], float]:
+        """Map undirected topology scores back onto every directed arc in ``H``."""
         U = H.to_undirected()
         n = U.number_of_nodes()
         # Auto-approx on large graphs
-        if k_samples is None and n > 500:
-            k = min(200, n)
+        if k_samples is None and n > _CENTRALITY_SAMPLE_THRESHOLD:
+            k = min(_CENTRALITY_SAMPLE_SIZE, n)
         else:
             k = k_samples
 
         if k is not None and k < n:
-            return nx.edge_betweenness_centrality(U, k=k, normalized=True, seed=42)
+            undirected_scores = nx.edge_betweenness_centrality(
+                U, k=k, normalized=True, seed=_CENTRALITY_SEED
+            )
+        else:
+            undirected_scores = nx.edge_betweenness_centrality(U, normalized=True)
 
-        return nx.edge_betweenness_centrality(U, normalized=True)
+        return {
+            (u, v): undirected_scores.get((u, v), undirected_scores.get((v, u), 0.0))
+            for u, v in H.edges()
+        }
+
+    def ranked_edges(scores: dict[tuple[Any, Any], float]) -> list[tuple[Any, Any]]:
+        return sorted(scores, key=lambda edge: (-scores[edge], _edge_sort_key(edge)))
 
     # Non-adaptive: compute once
     if not adaptive:
         eb = compute_scores()
-        ranked_edges = sorted(eb.items(), key=lambda kv: kv[1], reverse=True)
+        removal_order = ranked_edges(eb)[:m]
 
-        for step, (edge, _score) in enumerate(ranked_edges[:m], start=1):
+        for step, edge in enumerate(removal_order, start=1):
             u, v = edge
-            if H.has_edge(u, v):
-                H.remove_edge(u, v)
-            elif H.has_edge(v, u):
-                H.remove_edge(v, u)
+            H.remove_edge(u, v)
 
             entry = {"step": step, "removed_edge": (u, v), "report": None}
-            if step % max(1, report_every_n) == 0 or step == m:
+            if step % report_every_n == 0 or step == len(removal_order):
                 entry["report"] = topological_report(H, fast_mode=fast_mode)
             log.append(entry)
 
@@ -330,20 +374,16 @@ def edge_betweenness_attack(
         if not eb:
             break
 
-        emax = max(eb, key=eb.get)
+        emax = min(eb, key=lambda edge: (-eb[edge], _edge_sort_key(edge)))
         u, v = emax
-
-        if H.has_edge(u, v):
-            H.remove_edge(u, v)
-        elif H.has_edge(v, u):
-            H.remove_edge(v, u)
+        H.remove_edge(u, v)
 
         entry = {"step": step, "removed_edge": (u, v), "report": None}
-        if step % max(1, report_every_n) == 0 or step == m:
+        if step % report_every_n == 0 or step == m:
             entry["report"] = topological_report(H, fast_mode=fast_mode)
         log.append(entry)
 
-        if step % max(1, recompute_every) == 0:
+        if step % recompute_every == 0:
             eb = compute_scores()
         else:
             eb.pop(emax, None)
@@ -352,7 +392,10 @@ def edge_betweenness_attack(
 
 
 def geographic_attack_radius(
-    G: nx.DiGraph, center: tuple[float, float], radius_km: float
+    G: nx.DiGraph,
+    center: tuple[float, float],
+    radius_km: float,
+    fast_mode: bool = False,
 ) -> tuple[nx.DiGraph, dict]:
     """
     Simulates a localized failure where all nodes within a geographic radius are removed.
@@ -361,17 +404,37 @@ def geographic_attack_radius(
         G: The input graph.
         center: A tuple of (latitude, longitude) for the center of the attack.
         radius_km: The radius of the attack in kilometers.
+        fast_mode: Use sampled topology metrics in the returned report.
 
     Returns:
         A tuple containing the modified graph and a report dictionary.
     """
+    if not isinstance(radius_km, (int, float)) or not math.isfinite(radius_km) or radius_km < 0:
+        raise ValueError("radius_km must be a finite non-negative value")
+    try:
+        latitude, longitude = center
+    except (TypeError, ValueError) as exc:
+        raise ValueError("center must contain finite latitude and longitude values") from exc
+    if not all(isinstance(value, (int, float)) and math.isfinite(value) for value in center):
+        raise ValueError("center must contain finite latitude and longitude values")
+    if not -90.0 <= latitude <= 90.0 or not -180.0 <= longitude <= 180.0:
+        raise ValueError("center latitude/longitude are out of range")
+
     victims = list(nodes_within_radius_km(G, center, radius_km))
     H = G.copy()
     H.remove_nodes_from(victims)
-    return H, {"removed_nodes": victims, "report": topological_report(H)}
+    return H, {
+        "removed_nodes": victims,
+        "report": topological_report(H, fast_mode=fast_mode),
+    }
 
 
-def community_bridge_attack(G: nx.DiGraph, m: int) -> tuple[nx.DiGraph, dict]:
+def community_bridge_attack(
+    G: nx.DiGraph,
+    m: int,
+    fast_mode: bool = True,
+    k_samples: int | None = None,
+) -> tuple[nx.DiGraph, dict]:
     """
     Targets edges that connect different communities (bridges).
 
@@ -381,14 +444,30 @@ def community_bridge_attack(G: nx.DiGraph, m: int) -> tuple[nx.DiGraph, dict]:
     Args:
         G: The input graph.
         m: The number of bridge edges to remove.
+        fast_mode: Use sampled topology metrics in the returned report.
+        k_samples: Optional number of nodes sampled for edge betweenness.
 
     Returns:
         A tuple containing the modified graph and a report dictionary.
     """
+    if m < 0:
+        raise ValueError("m must be non-negative")
+    if k_samples is not None and k_samples <= 0:
+        raise ValueError("k_samples must be positive when provided")
+    if m == 0:
+        return G.copy(), {
+            "removed_edges": [],
+            "report": topological_report(G, fast_mode=fast_mode),
+        }
+
     # Use Label Propagation to detect communities on the undirected structure
     from networkx.algorithms.community import label_propagation_communities
 
-    comms = list(label_propagation_communities(G.to_undirected()))
+    U = G.to_undirected()
+    comms = [
+        sorted(community, key=_node_sort_key) for community in label_propagation_communities(U)
+    ]
+    comms.sort(key=lambda community: tuple(_node_sort_key(node) for node in community))
 
     # Map each node to its community ID
     comm_id = {}
@@ -397,26 +476,45 @@ def community_bridge_attack(G: nx.DiGraph, m: int) -> tuple[nx.DiGraph, dict]:
             comm_id[n] = cid
 
     # Identify edges that connect nodes from different communities
-    inter_edges = [(u, v) for u, v in G.edges() if comm_id.get(u) != comm_id.get(v)]
+    inter_edges = sorted(
+        ((u, v) for u, v in G.edges() if comm_id.get(u) != comm_id.get(v)),
+        key=_edge_sort_key,
+    )
 
     if not inter_edges:
-        return G.copy(), {"removed_edges": [], "report": topological_report(G)}
+        return G.copy(), {
+            "removed_edges": [],
+            "report": topological_report(G, fast_mode=fast_mode),
+        }
 
     H = G.copy()
 
     # Rank these inter-community edges by their edge betweenness centrality.
-    # We calculate centrality on the full undirected graph to capture global flow importance.
-    eb = nx.edge_betweenness_centrality(G.to_undirected())
+    # Automatically sample large graphs to keep the attack usable on the full dataset.
+    n = U.number_of_nodes()
+    if k_samples is None and n > _CENTRALITY_SAMPLE_THRESHOLD:
+        k = min(_CENTRALITY_SAMPLE_SIZE, n)
+    else:
+        k = k_samples
+    if k is not None and k < n:
+        eb = nx.edge_betweenness_centrality(U, k=k, normalized=True, seed=_CENTRALITY_SEED)
+    else:
+        eb = nx.edge_betweenness_centrality(U, normalized=True)
 
     # Sort inter-edges by their centrality score.
     # We check both (u,v) and (v,u) in the centrality dict since it's undirected.
     ranked = sorted(
-        [e for e in inter_edges if e in eb or (e[::-1] in eb)],
-        key=lambda e: eb.get(e, eb.get((e[1], e[0]), 0)),
-        reverse=True,
+        inter_edges,
+        key=lambda edge: (
+            -eb.get(edge, eb.get((edge[1], edge[0]), 0.0)),
+            _edge_sort_key(edge),
+        ),
     )
 
-    removed = ranked[:m]
+    removed = ranked[: min(m, len(ranked))]
     H.remove_edges_from(removed)
 
-    return H, {"removed_edges": removed, "report": topological_report(H)}
+    return H, {
+        "removed_edges": removed,
+        "report": topological_report(H, fast_mode=fast_mode),
+    }

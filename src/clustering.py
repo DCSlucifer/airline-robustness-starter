@@ -7,11 +7,31 @@ into super-nodes for improved visual hierarchy and performance.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 import networkx as nx
 
 from .constants import CLUSTER_GRID_SIZE_DEG, MIN_CLUSTER_SIZE
+
+
+def _node_sort_key(node: Any) -> tuple[str, str, str]:
+    node_type = type(node)
+    return node_type.__module__, node_type.__qualname__, repr(node)
+
+
+def _valid_coordinates(lat: Any, lon: Any) -> bool:
+    try:
+        latitude = float(lat)
+        longitude = float(lon)
+    except (TypeError, ValueError):
+        return False
+    return (
+        math.isfinite(latitude)
+        and math.isfinite(longitude)
+        and -90.0 <= latitude <= 90.0
+        and -180.0 <= longitude <= 180.0
+    )
 
 
 def community_clustering(G: nx.DiGraph) -> dict[str, int]:
@@ -31,7 +51,10 @@ def community_clustering(G: nx.DiGraph) -> dict[str, int]:
     U = G.to_undirected()
     from networkx.algorithms.community import label_propagation_communities
 
-    communities = list(label_propagation_communities(U))
+    communities = [
+        sorted(community, key=_node_sort_key) for community in label_propagation_communities(U)
+    ]
+    communities.sort(key=lambda community: tuple(_node_sort_key(node) for node in community))
 
     node_to_cluster = {}
     for cluster_id, community in enumerate(communities):
@@ -56,33 +79,29 @@ def geographic_clustering(
     Returns:
         Dictionary mapping node ID to cluster ID (grid cell index).
     """
+    if not math.isfinite(grid_size_deg) or grid_size_deg <= 0:
+        raise ValueError("grid_size_deg must be positive and finite")
+
     if G.number_of_nodes() == 0:
         return {}
 
-    cell_to_id = {}
-    node_to_cluster = {}
-    next_cluster_id = 0
+    node_cells = {}
 
     for node, data in G.nodes(data=True):
         lat = data.get("lat")
         lon = data.get("lon")
 
-        if lat is None or lon is None:
-            # Assign to a special "unknown" cluster
-            cell_key = ("unknown",)
-        else:
-            # Compute grid cell
-            cell_lat = int(lat // grid_size_deg)
-            cell_lon = int(lon // grid_size_deg)
-            cell_key = (cell_lat, cell_lon)
+        # Nodes without usable positions remain individual map nodes rather than
+        # being aggregated into an artificial cluster at (0, 0).
+        if not _valid_coordinates(lat, lon):
+            continue
 
-        if cell_key not in cell_to_id:
-            cell_to_id[cell_key] = next_cluster_id
-            next_cluster_id += 1
+        cell_lat = int(float(lat) // grid_size_deg)
+        cell_lon = int(float(lon) // grid_size_deg)
+        node_cells[node] = (cell_lat, cell_lon)
 
-        node_to_cluster[node] = cell_to_id[cell_key]
-
-    return node_to_cluster
+    cell_to_id = {cell: index for index, cell in enumerate(sorted(set(node_cells.values())))}
+    return {node: cell_to_id[cell] for node, cell in node_cells.items()}
 
 
 def cluster_aggregates(G: nx.DiGraph, clusters: dict[str, int]) -> list[dict[str, Any]]:
@@ -103,12 +122,15 @@ def cluster_aggregates(G: nx.DiGraph, clusters: dict[str, int]) -> list[dict[str
     # Group nodes by cluster
     cluster_nodes: dict[int, list[str]] = {}
     for node, cluster_id in clusters.items():
+        if node not in G:
+            continue
         if cluster_id not in cluster_nodes:
             cluster_nodes[cluster_id] = []
         cluster_nodes[cluster_id].append(node)
 
     aggregates = []
-    for cluster_id, nodes in cluster_nodes.items():
+    for cluster_id in sorted(cluster_nodes, key=_node_sort_key):
+        nodes = sorted(cluster_nodes[cluster_id], key=_node_sort_key)
         # Skip small clusters (they remain as individual nodes)
         if len(nodes) < MIN_CLUSTER_SIZE:
             continue
@@ -121,14 +143,17 @@ def cluster_aggregates(G: nx.DiGraph, clusters: dict[str, int]) -> list[dict[str
             data = G.nodes.get(node, {})
             lat = data.get("lat")
             lon = data.get("lon")
-            if lat is not None and lon is not None:
-                lats.append(lat)
-                lons.append(lon)
+            if _valid_coordinates(lat, lon):
+                lats.append(float(lat))
+                lons.append(float(lon))
             # Sum degrees as size proxy
             total_degree += G.in_degree(node) + G.out_degree(node)
 
-        centroid_lat = sum(lats) / len(lats) if lats else 0.0
-        centroid_lon = sum(lons) / len(lons) if lons else 0.0
+        if not lats:
+            continue
+
+        centroid_lat = sum(lats) / len(lats)
+        centroid_lon = sum(lons) / len(lons)
 
         aggregates.append(
             {
@@ -162,13 +187,15 @@ def get_unclustered_nodes(G: nx.DiGraph, clusters: dict[str, int]) -> list[str]:
 
     # Count cluster sizes
     cluster_sizes: dict[int, int] = {}
-    for cluster_id in clusters.values():
+    for node in G.nodes():
+        if node not in clusters:
+            continue
+        cluster_id = clusters[node]
         cluster_sizes[cluster_id] = cluster_sizes.get(cluster_id, 0) + 1
 
-    # Return nodes in small clusters
-    unclustered = []
-    for node, cluster_id in clusters.items():
-        if cluster_sizes[cluster_id] < MIN_CLUSTER_SIZE:
-            unclustered.append(node)
-
-    return unclustered
+    # Return nodes in small clusters and graph nodes absent from a partial mapping.
+    return [
+        node
+        for node in G.nodes()
+        if node not in clusters or cluster_sizes[clusters[node]] < MIN_CLUSTER_SIZE
+    ]

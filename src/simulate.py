@@ -259,10 +259,12 @@ def run_simulation(cfg: Mapping[str, Any], args: argparse.Namespace) -> list[Pat
             fast_mode=fast_mode,
         )
     elif args.attack == "geographic_radius":
-        _, info = geographic_attack_radius(graph, (args.lat, args.lon), args.radius_km)
+        _, info = geographic_attack_radius(
+            graph, (args.lat, args.lon), args.radius_km, fast_mode=fast_mode
+        )
         log = [info]
     elif args.attack == "community_bridge":
-        _, info = community_bridge_attack(graph, m=int(cfg["m_edges"]))
+        _, info = community_bridge_attack(graph, m=int(cfg["m_edges"]), fast_mode=fast_mode)
         log = [info]
     else:  # pragma: no cover - argparse choices make this unreachable
         raise SimulationConfigError(f"Unknown attack type: {args.attack}")

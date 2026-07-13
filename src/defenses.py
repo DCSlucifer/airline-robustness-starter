@@ -8,7 +8,9 @@ strategic edges (redundancy) to connect communities or hardening critical nodes.
 from __future__ import annotations
 
 import itertools
+import math
 import warnings
+from typing import Any
 
 import networkx as nx
 
@@ -19,6 +21,30 @@ __all__ = [
 
 from .geo import haversine_km
 from .metrics import topological_report
+
+
+def _node_sort_key(node: Any) -> tuple[str, str, str]:
+    node_type = type(node)
+    return node_type.__module__, node_type.__qualname__, repr(node)
+
+
+def _edge_sort_key(edge: tuple[Any, Any]) -> tuple[tuple[str, str, str], tuple[str, str, str]]:
+    return _node_sort_key(edge[0]), _node_sort_key(edge[1])
+
+
+def _finite_coordinates(*values: Any) -> bool:
+    try:
+        numeric = tuple(float(value) for value in values)
+    except (TypeError, ValueError):
+        return False
+    lat1, lon1, lat2, lon2 = numeric
+    return (
+        all(math.isfinite(value) for value in numeric)
+        and -90.0 <= lat1 <= 90.0
+        and -180.0 <= lon1 <= 180.0
+        and -90.0 <= lat2 <= 90.0
+        and -180.0 <= lon2 <= 180.0
+    )
 
 
 def _candidate_pairs(
@@ -47,7 +73,10 @@ def _candidate_pairs(
     U = G.to_undirected()
     from networkx.algorithms.community import label_propagation_communities
 
-    comms = list(label_propagation_communities(U))
+    comms = [
+        sorted(community, key=_node_sort_key) for community in label_propagation_communities(U)
+    ]
+    comms.sort(key=lambda community: tuple(_node_sort_key(node) for node in community))
 
     # Map each node to its community ID for quick lookup
     comm_id = {}
@@ -59,14 +88,14 @@ def _candidate_pairs(
     # High-degree nodes are good candidates for "hubs" to connect communities.
     candidates = []
     for c in comms:
-        nodes = sorted(list(c), key=lambda n: U.degree(n), reverse=True)[:top_n_per_comm]
+        nodes = sorted(c, key=lambda node: (-U.degree(node), _node_sort_key(node)))[:top_n_per_comm]
         candidates.extend(nodes)
 
-    cand_set = set(candidates)
+    candidate_nodes = sorted(set(candidates), key=_node_sort_key)
 
     # Form pairs from the candidate pool that are not already connected.
     pairs = []
-    for u, v in itertools.combinations(cand_set, 2):
+    for u, v in itertools.combinations(candidate_nodes, 2):
         if U.has_edge(u, v):
             continue
 
@@ -80,10 +109,10 @@ def _candidate_pairs(
         lat2, lon2 = b.get("lat"), b.get("lon")
 
         # Skip if location data is missing
-        if None in (lat1, lon1, lat2, lon2):
+        if not _finite_coordinates(lat1, lon1, lat2, lon2):
             continue
 
-        if haversine_km(lat1, lon1, lat2, lon2) <= max_distance_km:
+        if haversine_km(float(lat1), float(lon1), float(lat2), float(lon2)) <= max_distance_km:
             pairs.append((u, v))
 
     return pairs
@@ -121,8 +150,8 @@ def greedy_edge_addition(
         )
         return H, log
 
-    if max_distance_km <= 0:
-        raise ValueError("max_distance_km must be positive")
+    if not math.isfinite(max_distance_km) or max_distance_km <= 0:
+        raise ValueError("max_distance_km must be positive and finite")
 
     if G.number_of_nodes() < 2:
         warnings.warn("Graph has fewer than 2 nodes, cannot add edges", UserWarning, stacklevel=2)
@@ -145,7 +174,7 @@ def greedy_edge_addition(
             scored_candidates.append(((u, v), score))
 
         # Sort by score descending and take top 5
-        scored_candidates.sort(key=lambda x: x[1], reverse=True)
+        scored_candidates.sort(key=lambda item: (-item[1], _edge_sort_key(item[0])))
         top_candidates = [pair for pair, score in scored_candidates[:5]]
 
         # --- STAGE 2: Accurate Check ---
@@ -229,4 +258,9 @@ def node_hardening_list(G: nx.DiGraph, top_n: int = 10, metric: str = "betweenne
             f"Unknown metric: '{metric}'. Valid options: 'betweenness', 'degree', 'pagerank'"
         )
 
-    return [n for n, _ in sorted(scores.items(), key=lambda kv: kv[1], reverse=True)[:top_n]]
+    return [
+        node
+        for node, _ in sorted(scores.items(), key=lambda item: (-item[1], _node_sort_key(item[0])))[
+            :top_n
+        ]
+    ]
